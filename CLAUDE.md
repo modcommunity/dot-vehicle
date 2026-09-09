@@ -182,7 +182,7 @@ find . -name '*.gd' -not -path './.godot/*' -not -path './addons/dot_core/*' | \
 timeout 180 godot --headless --path . res://examples/vehicle_selftest.tscn
 ```
 
-114 checks. Exits non-zero on failure. Run the `--check-only` pass first: a scene whose
+122 checks. Exits non-zero on failure. Run the `--check-only` pass first: a scene whose
 script fails to parse **hangs** rather than failing.
 
 The suite drives real bodies through real physics frames, which is why it takes tens of
@@ -200,8 +200,37 @@ seconds rather than one. A placement test against no colliders would pass anywhe
 | Whether rider nodes are carried at all | `DotVehicleRide.carry_rider_nodes` |
 | What the exit sweep tests against | `DotVehicleRide.exit_mask` |
 | Where vehicles are added | `DotVehicleSpawner.world_ref`, a `DotNodeRef` |
+| A body something else already created | `DotVehicleSpawner.adopt()` |
 | Who may spawn what | `DotVehicleDef.entitlement` plus the spawner's `entitlements` callable |
 | What replicates | `DotVehicleNetSync.specs()`, resolved by the game's bridge |
+
+## `adopt()`, and why a spawner grew a second entry point
+
+**game-playground drove the first one of these and it could not use `spawn`.** Everything
+in that world is a `DotPropInstance` — on a prop budget, on an undo stack, gone when its
+owner leaves, and pickup-able by a physics gun, because a car a gravity gun cannot punt is
+not a sandbox car. Its prop spawner has already loaded the scene and put the body in the
+world by the time anything knows what the definition is, so `spawn` would have built a
+second body and thrown one of them away.
+
+`adopt(body, id, owner)` is everything after the instantiate: the entitlement, the budget,
+the cooldown, the instance row, the chassis and the announcement. `spawn` is now written in
+terms of it rather than the two being kept in step by hand.
+
+Three things it does differently, all deliberate:
+
+- **It does not place the node and does not reparent it.** Whoever created it has already
+  decided where it goes.
+- **It refuses a body that is already a vehicle.** Two instances over one node is two
+  chassis writing engine force onto the same rigid body every tick, which is a car with
+  twice the power its tunables say — reported as "the handling feels off".
+- **`remove` does not free an adopted node.** The host that made it owns its lifetime, and
+  freeing from both ends leaves a listener holding an instance whose node is gone. The
+  marker is `DotVehicleInstance.meta[META_ADOPTED]`; `is_adopted()` reads it.
+
+**The budget is still checked.** A host with its own budget is welcome to have one, but an
+adopted vehicle still occupies a seat in this spawner's world count — otherwise
+`world_budget` would silently mean nothing on exactly the deployment this exists for.
 
 ## Things deliberately not here
 

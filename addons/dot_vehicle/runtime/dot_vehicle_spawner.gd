@@ -53,6 +53,10 @@ const REASON_LEFT := &"left"
 const REASON_CLEANUP := &"cleanup"
 const REASON_ADMIN := &"admin"
 
+## Set in [member DotVehicleInstance.meta] on a vehicle whose node came from
+## [method adopt] rather than from [method spawn].
+const META_ADOPTED := &"dot_vehicle_adopted"
+
 @export_group("Content")
 
 @export var catalogue: DotVehicleCatalogue = null
@@ -256,6 +260,89 @@ func spawn(
 
 	(resolved.value as Node).add_child(body)
 
+	return _register(body, def, owner_id)
+
+
+## Takes over a body somebody else created, and makes it a vehicle.
+##
+## [b]For a game whose things are already spawned by something else.[/b] game-playground
+## is the case this exists for: everything in that world is a [code]DotPropInstance[/code]
+## so that it counts against a budget, can be undone, goes when its owner leaves, and can
+## be picked up by a physics gun — and a car a gravity gun cannot punt is not a sandbox
+## car. Its prop spawner has already loaded the scene and put the body in the world by
+## the time anything knows the definition, so [method spawn] cannot be the entry point
+## there without a second body being created and thrown away.
+##
+## Everything after the instantiate is identical, which is why [method spawn] is written
+## in terms of this rather than the two being kept in step by hand.
+##
+## [b]The budget and the cooldown are still checked.[/b] A host with its own budget is
+## welcome to have one — playground does — but a vehicle registered here still occupies
+## a seat in this spawner's world count, and skipping [method may_spawn] would make
+## [member world_budget] a number that silently means nothing on exactly the deployment
+## this method exists for.
+##
+## The node is NOT reparented and NOT moved: whoever created it has already decided
+## where it goes. Null on refusal, with [signal refused] emitted.
+func adopt(
+	body: Node3D,
+	vehicle_id: StringName,
+	owner_id: StringName = &"",
+	entitlements: Callable = Callable()
+) -> DotVehicleInstance:
+	if not authoritative:
+		_refuse(owner_id, vehicle_id, "This client may not spawn vehicles.")
+		return null
+
+	if body == null or not is_instance_valid(body):
+		_refuse(owner_id, vehicle_id, "There is no body to adopt.")
+		return null
+
+	if catalogue == null:
+		_refuse(owner_id, vehicle_id, "This server has no vehicle catalogue.")
+		return null
+
+	var def := catalogue.get_vehicle(vehicle_id)
+
+	if def == null or not def.enabled:
+		_refuse(owner_id, vehicle_id, "No such vehicle.")
+		return null
+
+	if def.entitlement != &"" and entitlements.is_valid():
+		if not bool(entitlements.call(def.entitlement)):
+			_refuse(owner_id, vehicle_id, "You do not have that vehicle.")
+			return null
+
+	var allowed := may_spawn(def, owner_id)
+
+	if not allowed.ok:
+		_refuse(owner_id, vehicle_id, allowed.error.message)
+		return null
+
+	# Refused rather than registered twice. A second instance over one node gives two
+	# chassis writing engine force onto the same rigid body every tick, which reads as a
+	# car with twice the power its tunables say and is the sort of thing that gets
+	# reported as "the handling feels off".
+	if _vehicles.has(body.get_instance_id()):
+		_refuse(owner_id, vehicle_id, "That body is already a vehicle.")
+		return null
+
+	var vehicle := _register(body, def, owner_id)
+
+	if vehicle != null:
+		# Recorded so [method remove] does not free a node this spawner did not create.
+		# The host that made it owns its lifetime — in playground's case dot-props, which
+		# frees it from its own undo stack — and freeing it from both ends is how a
+		# listener holding the instance finds a node that is already gone.
+		vehicle.meta[META_ADOPTED] = true
+
+	return vehicle
+
+
+## The half of a spawn that is not "make the node": bookkeeping, chassis, announcement.
+func _register(
+	body: Node3D, def: DotVehicleDef, owner_id: StringName
+) -> DotVehicleInstance:
 	var vehicle := DotVehicleInstance.new()
 	vehicle.def = def
 	vehicle.node = body
@@ -469,10 +556,15 @@ func remove(instance_id: int, reason: StringName = REASON_ADMIN) -> bool:
 	vehicle.alive = false
 	vehicle.chassis = null
 
-	if vehicle.node != null and is_instance_valid(vehicle.node):
+	if vehicle.node != null and is_instance_valid(vehicle.node) and not is_adopted(vehicle):
 		vehicle.node.queue_free()
 
 	return true
+
+
+## Whether this vehicle's node was created by somebody else. See [method adopt].
+static func is_adopted(vehicle: DotVehicleInstance) -> bool:
+	return vehicle != null and bool(vehicle.meta.get(META_ADOPTED, false))
 
 
 func clear_owner(owner_id: StringName, reason: StringName = REASON_CLEANUP) -> int:

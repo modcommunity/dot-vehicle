@@ -44,6 +44,7 @@ func _run() -> void:
 	_test_catalogue()
 	_test_commands()
 	_test_spawning()
+	_test_adopting()
 	_test_authority()
 	_test_budgets()
 	_test_chassis()
@@ -357,6 +358,49 @@ func _test_spawning() -> void:
 
 	_check(spawner.spawn(&"nothing", Vector3.ZERO) == null, "an unknown id is refused")
 
+	spawner.queue_free()
+
+
+## A body created by somebody else, made a vehicle.
+##
+## The case that put this method here is game-playground, where every spawnable is a
+## `DotPropInstance` so that a gravity gun can punt it — so the body exists, in the
+## world, before anything knows it is a car.
+func _test_adopting() -> void:
+	print("adopting")
+
+	var spawner := _spawner()
+
+	var scene: PackedScene = load(CAR)
+	var body := scene.instantiate() as Node3D
+	_world.add_child(body)
+	body.global_position = Vector3(0, 1, 40)
+
+	var jeep := spawner.adopt(body, &"jeep", &"alice")
+
+	_check(jeep != null, "a body somebody else made becomes a vehicle")
+	_check(jeep.node == body, "over the node it was given, not a second one")
+	_check(jeep.chassis is DotVehicleWheeled, "with its chassis attached")
+	_check(spawner.world_count() == 1, "and it counts against the world budget")
+	_check(
+		jeep.position().distance_to(Vector3(0, 1, 40)) < 0.5,
+		"and it is left where its host put it",
+		"adopt places nothing: whoever made the body already decided"
+	)
+
+	_check(
+		spawner.adopt(body, &"jeep", &"alice") == null,
+		"the same body is refused a second time",
+		"two chassis over one rigid body is twice the engine force, silently"
+	)
+
+	# The half that only fails on the deployment this exists for: dot-props frees the
+	# node from its own undo stack, so this spawner must not free it as well.
+	spawner.remove(jeep.instance_id)
+	_check(is_instance_valid(body), "removing an adopted vehicle leaves its node alone")
+	_check(spawner.world_count() == 0, "but the spawner has let go of it")
+
+	body.queue_free()
 	spawner.queue_free()
 
 
