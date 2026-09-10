@@ -101,6 +101,30 @@ Both confirmed against `scene/3d/physics/vehicle_body_3d.cpp` and by running it:
 `DotVehicleCommand` uses this family's conventions and `DotVehicleWheeled` does the
 translation, once, so no game ever has to.
 
+## Driving without a person
+
+A `DotVehicleCommand` is throttle, steer and brake — and for the whole life of this
+addon the only thing that could produce one was somebody holding a key. `DotVehicleDriver`
+is the other half: give it a route and it drives.
+
+```gdscript
+var driver := DotVehicleDriver.new()
+driver.target_speed = 16.0
+driver.set_route(PackedVector3Array([checkpoint_a, checkpoint_b, depot]))
+
+jeep.autopilot = driver          # the spawner's tick drives it from here
+```
+
+It steers in the vehicle's own frame (a car on a banked corner is rolled, and a world
+yaw is the wrong question), brakes for corners rather than lifting off, eases down to
+the last waypoint rather than braking at the arrival circle, and notices when it has
+been asking for throttle and going nowhere — then reverses out with the wheel turned the
+other way, which is what a person does without thinking about it.
+
+**It does not path.** The route comes from dot-npc's graph, a spline, or four points in
+a config file. And a person in the driving seat always wins: an autopilot is only
+consulted for a vehicle nobody is driving.
+
 ## Validating
 
 ```bash

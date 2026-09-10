@@ -65,6 +65,7 @@ addons/dot_vehicle/
     dot_vehicle_chassis.gd    How a command becomes motion. The subclass point.
     dot_vehicle_wheeled.gd    Godot's VehicleBody3D, with the tunables on its wheels.
     dot_vehicle_hover.gd      Our own raycast suspension. A hovercraft or a skiff.
+    dot_vehicle_driver.gd     A route becomes a command. What lets a bot drive.
   net/
     dot_vehicle_net_sync.gd   What replicates, as strings. Never names dot-net.
 ```
@@ -126,6 +127,57 @@ same thing as a bug.
 | `max_exit_speed` | A player who leaps from a moving vehicle takes fall damage the game has not written, or lands inside the geometry the vehicle was about to occupy. |
 | `allow_exit_when_inverted` | **Overrides the speed rule rather than adding to it.** The one state a player cannot drive out of must always be one they can leave; a rule that kept them in an overturned car is a rule that kills them. |
 
+## The driver, and the shape of the gap it filled
+
+This addon has always said a `DotVehicleCommand` is built by the game "from a keyboard,
+a gamepad, a touch layout **or a bot**" — and shipped the first three shapes and
+nothing at all for the fourth. So a vehicle could be driven and could not be driven by
+*anything*: no convoy, no chase, no NPC that gets in a car, and no way to demonstrate a
+vehicle moving without somebody holding a key. That is the family's most repeated shape
+one more time — a seam documented, meant, and never built.
+
+`DotVehicleDriver` reads a position, a heading and a velocity and returns throttle,
+steer and brake. It knows nothing about physics and nothing about the world, which is
+deliberate three times over: it is testable with no physics server at all, it works for
+a chassis this addon has never seen, and it cannot quietly become a second place where
+driving is simulated.
+
+**It does not path.** Give it a route — from dot-npc's graph, from a spline, from four
+points in a config file — and it follows it. Deciding where to go is a different problem
+and putting it here would make this addon depend on a navigation one.
+
+Four things in it are not obvious:
+
+- **The steering angle is computed in the vehicle's own basis**, not as a world yaw. A
+  world yaw is the wrong question on anything that pitches or rolls, and a vehicle on a
+  hillside pitches. `+1` steers right, which is `DotVehicleCommand`'s convention and not
+  Godot's — `DotVehicleWheeled` flips it once, where the engine's own signs are
+  documented and measured.
+- **It brakes for corners rather than lifting off.** A driver that only lifts enters
+  every corner at whatever speed the straight left it at, and understeers off the road.
+- **It brakes on arrival rather than coasting.** A vehicle handed no command rolls on at
+  whatever speed it had, and "arrived" then means "went past".
+- **It notices being stuck and reverses out.** Every vehicle AI needs this, and the ones
+  that skip it end the round with a lorry against a lamppost. It counter-steers while
+  reversing, because backing out along the line you drove in on puts you back where you
+  were — turning the wheel the other way is what a person does without thinking.
+
+`waypoint_radius` defaults generously for a reason: a car cannot stop on a point, and a
+radius tighter than the turning circle produces a vehicle circling a waypoint it cannot
+quite touch, which looks exactly like a broken follower and is a number.
+
+**And it is wired in.** `DotVehicleInstance.autopilot` is consulted by the spawner's
+tick for a vehicle with nobody in the driving seat — a driver nothing calls is a driver
+that does not exist. A person in the seat always wins: a passenger climbing into a
+convoy lorry takes it over rather than fighting the autopilot for the wheel, which is
+the only behaviour that does not need explaining to a player.
+
+The suite drives a **kinematic toy car** rather than a `VehicleBody3D`. What is being
+tested is the decision — does it turn the right way, slow for the corner, notice it is
+stuck — and a real vehicle body answers that through a suspension model, a friction
+model and a solver, none of which is this addon's and all of which would decide whether
+the check passed.
+
 ## Things that are refused, and why they are refused early
 
 - **A seat with no exit offsets.** The moment a player finds one is the moment they are
@@ -182,7 +234,7 @@ find . -name '*.gd' -not -path './.godot/*' -not -path './addons/dot_core/*' | \
 timeout 180 godot --headless --path . res://examples/vehicle_selftest.tscn
 ```
 
-122 checks. Exits non-zero on failure. Run the `--check-only` pass first: a scene whose
+155 checks. Exits non-zero on failure. Run the `--check-only` pass first: a scene whose
 script fails to parse **hangs** rather than failing.
 
 The suite drives real bodies through real physics frames, which is why it takes tens of
@@ -192,6 +244,8 @@ seconds rather than one. A placement test against no colliders would pass anywhe
 
 | To change | Where |
 | --- | --- |
+| How something that is not a person drives | `DotVehicleDriver`, on `DotVehicleInstance.autopilot` |
+| How hard a driver corners, and when it gives up | `DotVehicleDriver.corner_slowdown` / `stuck_time` / `reverse_time` |
 | What a vehicle is | `DotVehicleDef` in a `DotVehicleCatalogue` |
 | How it handles | `DotVehicleTunables`, layered like every `DotConfig` |
 | A kind that behaves differently | `DotVehicleChassis` subclass, named by path |
@@ -235,9 +289,12 @@ adopted vehicle still occupies a seat in this spawner's world count — otherwis
 ## Things deliberately not here
 
 - **No prediction.** See above. It is a decision, not a gap.
-- **No input.** A `DotVehicleCommand` is built by the game from a keyboard, a gamepad, a
-  touch layout or a bot. dot-fps-controller's sampler is the model and naming it here
-  would make this addon fail to parse without it.
+- **No input.** A `DotVehicleCommand` is built by the game from a keyboard, a gamepad or
+  a touch layout. dot-fps-controller's sampler is the model and naming it here would
+  make this addon fail to parse without it. The **bot** case is `DotVehicleDriver`,
+  which is here.
+- **No pathfinding for the driver.** It follows a route it is given. dot-npc's graph
+  produces one; so does a spline, so does a list of four points in a config file.
 - **No camera.** A vehicle camera is a game's, and `on_seated` is where it moves.
 - **No damage model beyond a single health number.** Deformation, per-panel damage and
   wheels that come off are a game's; dot-combat is where a weapon lives.

@@ -162,6 +162,12 @@ func tick(delta: float) -> void:
 		# vehicles is what gives a parked car that ignores gravity on a slope.
 		var command := vehicle.command if vehicle.driver() != &"" else null
 
+		# An autopilot only drives what nobody is driving. A person in the seat wins,
+		# because a passenger climbing into a convoy lorry taking it over is the only
+		# behaviour that does not need explaining to a player.
+		if command == null and vehicle.autopilot != null:
+			command = vehicle.autopilot.drive(vehicle, delta)
+
 		(vehicle.chassis as DotVehicleChassis).drive(command, delta)
 
 

@@ -52,6 +52,14 @@ var chassis: RefCounted = null
 ## whose frame rate is below the tick rate — which is every client on a 128-tick server.
 var command: DotVehicleCommand = null
 
+## Something driving this vehicle that is not a person.
+##
+## [b]A person always wins.[/b] When somebody is in the driving seat their command is
+## used and this is ignored — a passenger climbing into a convoy lorry takes it over
+## rather than fighting the autopilot for the wheel, which is the only behaviour that
+## does not need explaining to a player.
+var autopilot: DotVehicleDriver = null
+
 var meta: Dictionary = {}
 
 
