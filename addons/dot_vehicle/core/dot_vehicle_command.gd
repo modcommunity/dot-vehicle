@@ -7,7 +7,7 @@ extends RefCounted
 ## reason[/b] — it is the thing a client sends, a demo records and a bot fabricates, and
 ## every one of those wants to build it without a controller present.
 ##
-## [b]It is intent, not prediction.[/b] dot-fps-controller's command exists so a client
+## [b]It is intent, not prediction.[/b] dot-player-controller's command exists so a client
 ## can simulate the same movement the server will; this one exists so a client can tell
 ## the server what it wants. A vehicle is rigid-body simulated and therefore not
 ## reproducible across machines, so the client sends this and draws what comes back.

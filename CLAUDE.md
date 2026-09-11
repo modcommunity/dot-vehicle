@@ -4,7 +4,7 @@
 handling as layered configuration, seats as data, and the handover between a player and
 a vehicle.
 
-Depends on **dot-core and nothing else**. Not on dot-fps-controller, not on dot-net, not
+Depends on **dot-core and nothing else**. Not on dot-player-controller, not on dot-net, not
 on dot-combat — each is a seam the host wires, and naming any of them would make this
 addon fail to parse in a project that does not have it.
 
@@ -290,7 +290,7 @@ adopted vehicle still occupies a seat in this spawner's world count — otherwis
 
 - **No prediction.** See above. It is a decision, not a gap.
 - **No input.** A `DotVehicleCommand` is built by the game from a keyboard, a gamepad or
-  a touch layout. dot-fps-controller's sampler is the model and naming it here would
+  a touch layout. dot-player-controller's sampler is the model and naming it here would
   make this addon fail to parse without it. The **bot** case is `DotVehicleDriver`,
   which is here.
 - **No pathfinding for the driver.** It follows a route it is given. dot-npc's graph

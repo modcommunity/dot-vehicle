@@ -43,7 +43,7 @@ signal refused(rider_id: StringName, vehicle_id: StringName, reason: String)
 ## Called when a rider is seated: `func(rider_id, vehicle, seat) -> void`.
 ##
 ## Where a game stops its own controller, parents its camera and switches its input.
-## dot-vehicle cannot do any of that without naming dot-fps-controller, and naming it
+## dot-vehicle cannot do any of that without naming dot-player-controller, and naming it
 ## would make this addon fail to parse in a project that does not have it.
 var on_seated: Callable = Callable()
 
