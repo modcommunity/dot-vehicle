@@ -44,6 +44,37 @@ func add(def: DotVehicleDef) -> DotResult:
 	return DotResult.success(def)
 
 
+## Download every pack this catalogue's vehicles live in.
+##
+## [b]Nothing used to fetch these.[/b] A DotVehicleDef has carried a `content_id` since it was
+## written and it is serialised onto the wire, but no code anywhere asked dot-cloud for
+## one — so a delivered vehicle was refused with "that vehicle's content is not loaded",
+## forever, on a server that had configured it perfectly. The refusal is correct and
+## that is what made it invisible: it reads as a missing pack rather than as a fetch
+## that never happens.
+##
+## [b]At load, not on demand.[/b] A spawn request is a player's, and turning one into a
+## download would let a player make this machine fetch — repeatedly, from whatever a
+## manifest names — by asking for something that is not there. The catalogue is known
+## before anyone connects, so this is a boot-time cost paid once. It also keeps the
+## spawn path synchronous, which is what every caller of it already assumes.
+##
+## Non-fatal by construction: a pack that will not download leaves that vehicle
+## unspawnable and everything else working. See [method DotContent.ensure_all] for the
+## shape of the answer.
+func ensure_content() -> DotResult:
+	if _by_id.size() != vehicles.size():
+		_reindex()
+
+	var ids := PackedStringArray()
+
+	for entry in vehicles:
+		if entry != null and String(entry.content_id) != "":
+			ids.append(String(entry.content_id))
+
+	return await DotContent.ensure_all(ids)
+
+
 func get_vehicle(id: StringName) -> DotVehicleDef:
 	if _by_id.size() != vehicles.size():
 		_reindex()
