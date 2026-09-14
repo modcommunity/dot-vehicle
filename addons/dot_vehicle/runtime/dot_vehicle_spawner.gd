@@ -560,12 +560,56 @@ func remove(instance_id: int, reason: StringName = REASON_ADMIN) -> bool:
 	# Marked dead immediately, which is not the same as freeing the node: `queue_free`
 	# is deferred and `is_instance_valid` stays true for the rest of the frame.
 	vehicle.alive = false
-	vehicle.chassis = null
+	_unbind(vehicle)
 
 	if vehicle.node != null and is_instance_valid(vehicle.node) and not is_adopted(vehicle):
 		vehicle.node.queue_free()
 
 	return true
+
+
+## Breaks the reference between a vehicle and the chassis driving it. BOTH ends.
+##
+## [b]A [DotVehicleInstance] holds its chassis and the chassis holds the vehicle, and two
+## [RefCounted]s pointing at each other are never collected.[/b] GDScript frees a
+## [RefCounted] when its count reaches zero and has no cycle collector, so a pair that
+## refers to each other survives the spawner, the game and the scene tree — and takes its
+## definition, its tunables, its seats and its last command with it. Measured in
+## game-buses-from-hell: 61 leaked objects and 8 leaked resources at exit, growing by one
+## world's worth every time a suite built another one, with every `remove` path looking
+## correct because [member DotVehicleInstance.chassis] WAS being cleared. It is the other
+## half of the pair that kept it alive.
+##
+## Called from [method remove] and from [method _exit_tree], because a spawner that is
+## simply freed never removes anything.
+func _unbind(vehicle: DotVehicleInstance) -> void:
+	if vehicle == null:
+		return
+
+	if vehicle.chassis != null:
+		# Through `set`, because a chassis is typed [RefCounted] here: dot-vehicle's own
+		# rule is that a delivered chassis extends this by PATH, so the property is not
+		# reachable by name on the static type.
+		vehicle.chassis.set("vehicle", null)
+
+	vehicle.chassis = null
+	# The autopilot holds no back-reference today, and clearing it is what stops that
+	# being an assumption the next driver has to know about.
+	vehicle.autopilot = null
+
+
+## Everything still bound when the spawner goes away.
+##
+## A game is torn down by freeing its nodes, not by removing its vehicles one at a time:
+## a round ends, a module unloads, a suite frees a world. Every one of those drops the
+## spawner's own table without ever calling [method remove], which is exactly the path
+## that leaked.
+func _exit_tree() -> void:
+	for id in _vehicles:
+		var vehicle: Variant = _vehicles[id]
+
+		if vehicle is DotVehicleInstance:
+			_unbind(vehicle)
 
 
 ## Whether this vehicle's node was created by somebody else. See [method adopt].
