@@ -227,7 +227,7 @@ patch of world and a frame between them.
 
 `remove()` had always cleared `instance.chassis`, which reads exactly like the fix and is half of it: the other half is the chassis, whose reference kept the instance alive whenever anything else was still holding the chassis. And the path that leaks hardest is the one that never calls `remove` at all — **a game is torn down by freeing its nodes**, not by removing its vehicles one at a time. A round ends, a module unloads, a suite frees a world; the spawner's own table goes with it and nothing ever unbinds.
 
-Measured in game-buses-from-hell: 61 leaked objects and 8 leaked resources at exit, growing by one world's worth every time its suite built another one, with every `remove` path looking correct. `_unbind` clears both ends and `_exit_tree` walks whatever is left; that suite now exits clean.
+Measured in mg-buses-from-hell: 61 leaked objects and 8 leaked resources at exit, growing by one world's worth every time its suite built another one, with every `remove` path looking correct. `_unbind` clears both ends and `_exit_tree` walks whatever is left; that suite now exits clean.
 
 **The general shape is worth keeping, because this addon is not the only place it can happen:** any pair of `RefCounted`s in this family that refer to each other is a leak, and the symptom is never a crash — it is a number in a suite's exit line that everybody has learned to read past.
 
@@ -235,7 +235,7 @@ Measured in game-buses-from-hell: 61 leaked objects and 8 leaked resources at ex
 
 `DotVehicleSpawner` constructs a `DotVehicleRide` in `_init`, and uses it for three things: evacuating a vehicle destroyed with people in it, answering `vehicle_of_rider`, and reporting how many riders there are. A game that does `ride = DotVehicleRide.new()` beside it gets a *second* index — and then those three read one that is always empty.
 
-game-buses-from-hell did exactly that and the symptoms were all "half of it works": `describe()` reported nobody driving while somebody was, and a destroyed bus released no rider. Assign the callbacks to `spawner.ride`; there is one roster of who is in what and it belongs to the spawner.
+mg-buses-from-hell did exactly that and the symptoms were all "half of it works": `describe()` reported nobody driving while somebody was, and a destroyed bus released no rider. Assign the callbacks to `spawner.ride`; there is one roster of who is in what and it belongs to the spawner.
 
 ## Validating
 
