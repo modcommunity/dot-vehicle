@@ -109,4 +109,4 @@ timeout 180 godot --headless --path . res://examples/vehicle_selftest.tscn
 
 ## Licence
 
-MIT.
+MIT. See [LICENSE](LICENSE).
