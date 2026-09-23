@@ -191,6 +191,7 @@ static func from_dictionary(
 	data: Dictionary, rejected: PackedStringArray = PackedStringArray()
 ) -> DotVehicleCatalogue:
 	var cat := DotVehicleCatalogue.new()
+	var rejected_before := rejected.size()
 
 	var raw: Variant = data.get("vehicles", [])
 
@@ -204,6 +205,16 @@ static func from_dictionary(
 
 			if not added.ok:
 				rejected.append(added.error.message if added.error != null else "invalid")
+
+	# Said here, whatever the caller does with [param rejected], because the operator
+	# with the text editor is who can fix entry forty, and a dropped vehicle otherwise
+	# surfaces much later as an unknown id from a spawn. WARN, and the same line the
+	# prop, map and NPC catalogues write for the same reason.
+	if rejected.size() > rejected_before:
+		DotLog.warn(CHANNEL, "some vehicle entries were dropped", {
+			"count": rejected.size() - rejected_before,
+			"entries": ", ".join(rejected.slice(rejected_before)),
+		})
 
 	var meta_value: Variant = data.get("meta", {})
 	cat.meta = (

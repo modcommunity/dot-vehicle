@@ -237,7 +237,18 @@ func drive_from(
 	var angle := acos(forward_dot)
 	var signed_angle := angle if side_dot >= 0.0 else -angle
 
+	var was_reversing := state == State.REVERSING
 	_track_stuck(speed, delta)
+
+	# DEBUG on the EDGE into reversing, never per tick: "why has my convoy stopped" is
+	# the question this state exists to answer, and a vehicle that gets stuck over and
+	# over at one spot is a route through something solid, which is the level's bug.
+	if state == State.REVERSING and not was_reversing:
+		DotLog.debug(CHANNEL, "a driven vehicle is stuck; reversing out", {
+			"position": position.snapped(Vector3(0.1, 0.1, 0.1)),
+			"waypoint": index,
+			"of": route.size(),
+		})
 
 	if state == State.REVERSING:
 		return _finish(_reverse(command, signed_angle, delta))
