@@ -20,9 +20,17 @@ const CRATE := "res://fixtures/crate.tscn"
 
 const CHECKS := 155
 
+## Sections entered against sections that ran to their last line, and against this. A
+## runtime error inside a section aborts that function and nothing says so; a section that
+## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
+## total is the other half — see docs/testing.md.
+const SECTIONS := 25
+
 var _passed := 0
 var _failed := 0
 var _failures := PackedStringArray()
+var _entered := 0
+var _completed := 0
 
 var _world: Node3D = null
 
@@ -71,6 +79,13 @@ func _run() -> void:
 	for line in _failures:
 		print("  FAIL  %s" % line)
 
+	print("%d of %d sections ran to their last line" % [_completed, _entered])
+	if _entered != SECTIONS or _completed != _entered:
+		print("ERROR: %d sections entered and %d completed, %d expected. One aborted or was skipped." % [
+			_entered, _completed, SECTIONS
+		])
+		get_tree().quit(1)
+		return
 	# The total the section counter cannot be. A runtime error inside a section aborts
 	# that function, and the counter is satisfied because the section had already
 	# announced itself. See docs/testing.md.
@@ -81,6 +96,16 @@ func _run() -> void:
 		get_tree().quit(1)
 		return
 	get_tree().quit(1 if _failed > 0 else 0)
+
+
+func _section(title: String) -> void:
+	_entered += 1
+	print(title)
+
+
+## A section reached its last line. See [constant SECTIONS].
+func _done() -> void:
+	_completed += 1
 
 
 func _check(ok: bool, what: String, detail: String = "") -> void:
@@ -182,7 +207,7 @@ func _wall(at: Vector3, size: Vector3) -> StaticBody3D:
 # --- Data ---------------------------------------------------------------------
 
 func _test_seats() -> void:
-	print("seats")
+	_section("seats")
 
 	var seat := DotVehicleSeat.make(&"driver", true)
 	_check(seat.validate().ok, "a seat validates")
@@ -204,10 +229,11 @@ func _test_seats() -> void:
 		round_tripped.exit_offsets.size() == seat.exit_offsets.size(),
 		"including its exits"
 	)
+	_done()
 
 
 func _test_tunables() -> void:
-	print("tunables")
+	_section("tunables")
 
 	var tuning := DotVehicleTunables.new()
 	_check(tuning.validate().ok, "the defaults are usable")
@@ -225,10 +251,11 @@ func _test_tunables() -> void:
 		configured.top_speed == 50.0 and configured.mass == 1400.0,
 		"and it is a DotConfig, so a server retunes handling in a file"
 	)
+	_done()
 
 
 func _test_steering_falloff() -> void:
-	print("steering")
+	_section("steering")
 
 	var tuning := DotVehicleTunables.new()
 	tuning.steering_limit_deg = 30.0
@@ -253,10 +280,11 @@ func _test_steering_falloff() -> void:
 		"and it stops falling above the top speed",
 		"a vehicle off a cliff would otherwise land unsteerable"
 	)
+	_done()
 
 
 func _test_definitions() -> void:
-	print("definitions")
+	_section("definitions")
 
 	var jeep := _jeep()
 	_check(jeep.validate().ok, "a definition validates")
@@ -301,10 +329,11 @@ func _test_definitions() -> void:
 		"and its handling",
 		"%.0f" % round_tripped.tuning().mass
 	)
+	_done()
 
 
 func _test_catalogue() -> void:
-	print("catalogue")
+	_section("catalogue")
 
 	var cat := _catalogue()
 	_check(cat.size() == 5, "a catalogue holds what was added", "%d" % cat.size())
@@ -324,10 +353,11 @@ func _test_catalogue() -> void:
 		"one bad entry does not condemn the file",
 		"%d kept, %d rejected" % [reloaded.size(), rejected.size()]
 	)
+	_done()
 
 
 func _test_commands() -> void:
-	print("commands")
+	_section("commands")
 
 	var cmd := DotVehicleCommand.make(40.0, -9.0, 3.0)
 	cmd.sanitise()
@@ -349,12 +379,13 @@ func _test_commands() -> void:
 	)
 
 	_check(DotVehicleCommand.new().is_idle(), "an empty command is idle")
+	_done()
 
 
 # --- Spawning -----------------------------------------------------------------
 
 func _test_spawning() -> void:
-	print("spawning")
+	_section("spawning")
 
 	var spawner := _spawner()
 	var jeep := spawner.spawn(&"jeep", Vector3(0, 1, 0), &"alice")
@@ -374,6 +405,7 @@ func _test_spawning() -> void:
 	_check(spawner.spawn(&"nothing", Vector3.ZERO) == null, "an unknown id is refused")
 
 	spawner.queue_free()
+	_done()
 
 
 ## A body created by somebody else, made a vehicle.
@@ -382,7 +414,7 @@ func _test_spawning() -> void:
 ## `DotPropInstance` so that a gravity gun can punt it — so the body exists, in the
 ## world, before anything knows it is a car.
 func _test_adopting() -> void:
-	print("adopting")
+	_section("adopting")
 
 	var spawner := _spawner()
 
@@ -417,10 +449,11 @@ func _test_adopting() -> void:
 
 	body.queue_free()
 	spawner.queue_free()
+	_done()
 
 
 func _test_authority() -> void:
-	print("authority")
+	_section("authority")
 
 	var client := DotVehicleSpawner.new()
 	client.catalogue = _catalogue()
@@ -431,10 +464,11 @@ func _test_authority() -> void:
 	_check(client.world_count() == 0, "and nothing appeared")
 
 	client.queue_free()
+	_done()
 
 
 func _test_budgets() -> void:
-	print("budgets")
+	_section("budgets")
 
 	var spawner := _spawner(10)
 
@@ -455,10 +489,11 @@ func _test_budgets() -> void:
 	_check(spawner.spawn(&"jeep", Vector3.ZERO, &"carol") != null, "and carol is not affected")
 
 	spawner.queue_free()
+	_done()
 
 
 func _test_chassis() -> void:
-	print("chassis")
+	_section("chassis")
 
 	var spawner := _spawner()
 
@@ -504,10 +539,11 @@ func _test_chassis() -> void:
 	)
 
 	spawner.queue_free()
+	_done()
 
 
 func _test_driving() -> void:
-	print("driving")
+	_section("driving")
 
 	var spawner := _spawner()
 	var ground := _wall(Vector3(0, -0.5, 0), Vector3(200, 1, 200))
@@ -567,6 +603,7 @@ func _test_driving() -> void:
 
 	ground.queue_free()
 	spawner.queue_free()
+	_done()
 
 
 # --- The handover -------------------------------------------------------------
@@ -635,7 +672,7 @@ func _drive_toy(
 
 
 func _test_driver_steering() -> void:
-	print("driver steering")
+	_section("driver steering")
 
 	var driver := DotVehicleDriver.new()
 	var forward := Vector3.FORWARD
@@ -700,10 +737,11 @@ func _test_driver_steering() -> void:
 		nothing.brake >= 1.0,
 		"and brakes rather than coasting, or 'arrived' means 'went past'"
 	)
+	_done()
 
 
 func _test_driver_route() -> void:
-	print("driver route")
+	_section("driver route")
 
 	var driver := DotVehicleDriver.new()
 	driver.set_route(PackedVector3Array([
@@ -768,10 +806,11 @@ func _test_driver_route() -> void:
 		not driver.has_route() and driver.state == DotVehicleDriver.State.IDLE,
 		"a cleared route leaves the driver idle"
 	)
+	_done()
 
 
 func _test_driver_stuck() -> void:
-	print("driver getting unstuck")
+	_section("driver getting unstuck")
 
 	var driver := DotVehicleDriver.new()
 	driver.stuck_time = 0.5
@@ -845,10 +884,11 @@ func _test_driver_stuck() -> void:
 		patient.state == DotVehicleDriver.State.DRIVING,
 		"and a stuck time of zero disables the whole thing"
 	)
+	_done()
 
 
 func _test_driver_drives_a_car() -> void:
-	print("driver end to end")
+	_section("driver end to end")
 
 	# The check that is worth all the others: does something actually get there.
 	var car := ToyCar.new()
@@ -940,10 +980,11 @@ func _test_driver_drives_a_car() -> void:
 	)
 
 	spawner.queue_free()
+	_done()
 
 
 func _test_entering() -> void:
-	print("getting in")
+	_section("getting in")
 
 	var spawner := _spawner()
 	var jeep := spawner.spawn(&"jeep", Vector3(0, 1, 0))
@@ -980,10 +1021,11 @@ func _test_entering() -> void:
 	)
 
 	spawner.queue_free()
+	_done()
 
 
 func _test_seat_rules() -> void:
-	print("seat rules")
+	_section("seat rules")
 
 	var spawner := _spawner()
 	var one := spawner.spawn(&"jeep", Vector3(0, 1, 0))
@@ -1008,10 +1050,11 @@ func _test_seat_rules() -> void:
 	)
 
 	spawner.queue_free()
+	_done()
 
 
 func _test_exit_placement() -> void:
-	print("getting out: the sweep")
+	_section("getting out: the sweep")
 
 	var spawner := _spawner()
 	var ground := _wall(Vector3(0, -0.5, 0), Vector3(200, 1, 200))
@@ -1075,10 +1118,11 @@ func _test_exit_placement() -> void:
 		wall.queue_free()
 
 	spawner.queue_free()
+	_done()
 
 
 func _test_exit_rules() -> void:
-	print("getting out: the rules")
+	_section("getting out: the rules")
 
 	var spawner := _spawner()
 	var jeep := spawner.spawn(&"jeep", Vector3(0, 1, 0))
@@ -1110,10 +1154,11 @@ func _test_exit_rules() -> void:
 	)
 
 	spawner.queue_free()
+	_done()
 
 
 func _test_carrying_the_rider() -> void:
-	print("carrying the rider")
+	_section("carrying the rider")
 
 	# Two frames, and 400 metres away from everything else in this file.
 	#
@@ -1168,10 +1213,11 @@ func _test_carrying_the_rider() -> void:
 
 	ground.queue_free()
 	spawner.queue_free()
+	_done()
 
 
 func _test_destruction() -> void:
-	print("destruction")
+	_section("destruction")
 
 	var spawner := _spawner()
 	var wreckable := spawner.spawn(&"wreckable", Vector3(0, 1, 0))
@@ -1213,10 +1259,11 @@ func _test_destruction() -> void:
 	_check(jeep.is_alive(), "and survives")
 
 	spawner.queue_free()
+	_done()
 
 
 func _test_disconnects() -> void:
-	print("disconnects")
+	_section("disconnects")
 
 	var spawner := _spawner()
 	var jeep := spawner.spawn(&"jeep", Vector3(0, 1, 0), &"alice")
@@ -1235,10 +1282,11 @@ func _test_disconnects() -> void:
 	_check(not second.is_alive(), "and the vehicle goes")
 
 	spawner.queue_free()
+	_done()
 
 
 func _test_no_leaked_nodes() -> void:
-	print("no leaks")
+	_section("no leaks")
 
 	var holder := Node3D.new()
 	_world.add_child(holder)
@@ -1268,12 +1316,13 @@ func _test_no_leaked_nodes() -> void:
 		"%d left" % spawner.get_child_count())
 
 	holder.queue_free()
+	_done()
 
 
 # --- Replication --------------------------------------------------------------
 
 func _test_net_sync() -> void:
-	print("replication")
+	_section("replication")
 
 	var specs := DotVehicleNetSync.specs()
 	_check(specs.size() == 11, "there is a spec for what crosses the wire",
@@ -1335,6 +1384,7 @@ func _test_net_sync() -> void:
 
 	node.queue_free()
 	spawner.queue_free()
+	_done()
 
 
 ## The receiving half of a replication, without dot-net in the project.
