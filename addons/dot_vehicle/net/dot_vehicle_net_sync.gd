@@ -11,10 +11,17 @@ extends RefCounted
 ## [b]A full orientation, not a yaw.[/b] Every other replicated body in this family
 ## sends a yaw and reconstructs the rest, because a player stands upright. A vehicle
 ## does not: it pitches over crests, rolls in corners and ends up on its roof, and a
-## client given only a yaw draws a car sliding flat through a barrel roll. The four
-## quaternion components at ten bits each cost 40 bits and there is no cheaper honest
-## answer — three Euler angles are the same size and gimbal lock in the one place it
-## would show, which is a vehicle nose-up.
+## client given only a yaw draws a car sliding flat through a barrel roll. A quaternion
+## is the honest answer: three Euler angles cost about the same and gimbal lock in the
+## one place it would show, which is a vehicle nose-up.
+##
+## [b]One QUATERNION, not four INTs.[/b] It was four ten-bit integer components until
+## 2026-09-28, and dot-net's interpolator treats any int as discrete and switches it at
+## the midpoint, so every client drew the body snapping round at the snapshot rate while
+## its position slid (game-playground's headless_net: heading still on 26 of 31 turning
+## ticks, `[veh-heading-1]`). dot-net's own type slerps between snapshots and costs
+## smallest-three at [code]DotNetConfig.rotation_bits[/code] (29 bits at the default 9,
+## against 44).
 ##
 ## [b]Everything is interpolated and nothing is predicted.[/b] See [DotVehicleSpawner]
 ## for the argument. The consequence for a bridge is that the driver's own client
@@ -45,10 +52,7 @@ static func specs() -> Array[Dictionary]:
 		{"property": &"net_x", "type": "FLOAT", "bits": 0, "interpolated": true},
 		{"property": &"net_y", "type": "FLOAT", "bits": 0, "interpolated": true},
 		{"property": &"net_z", "type": "FLOAT", "bits": 0, "interpolated": true},
-		{"property": &"net_qx", "type": "INT", "bits": QUAT_BITS + 1, "interpolated": true},
-		{"property": &"net_qy", "type": "INT", "bits": QUAT_BITS + 1, "interpolated": true},
-		{"property": &"net_qz", "type": "INT", "bits": QUAT_BITS + 1, "interpolated": true},
-		{"property": &"net_qw", "type": "INT", "bits": QUAT_BITS + 1, "interpolated": true},
+		{"property": &"net_orientation", "type": "QUATERNION", "bits": 0, "interpolated": true},
 		{
 			"property": &"net_speed",
 			"type": "UINT",
@@ -96,10 +100,7 @@ static func pull(vehicle: DotVehicleInstance, into: Object) -> void:
 	into.set(&"net_x", transform.origin.x)
 	into.set(&"net_y", transform.origin.y)
 	into.set(&"net_z", transform.origin.z)
-	into.set(&"net_qx", quantise_unit(rotation.x))
-	into.set(&"net_qy", quantise_unit(rotation.y))
-	into.set(&"net_qz", quantise_unit(rotation.z))
-	into.set(&"net_qw", quantise_unit(rotation.w))
+	into.set(&"net_orientation", rotation)
 	into.set(&"net_speed", clampi(int(round(vehicle.speed() * 3.6)), 0, (1 << SPEED_BITS) - 1))
 	into.set(&"net_health", quantise_health(vehicle))
 	into.set(&"net_occupancy", occupancy_mask(vehicle))
@@ -125,17 +126,13 @@ static func apply(node: Node3D, from: Object) -> void:
 	if node == null or from == null:
 		return
 
-	var rotation := Quaternion(
-		dequantise_unit(int(from.get(&"net_qx"))),
-		dequantise_unit(int(from.get(&"net_qy"))),
-		dequantise_unit(int(from.get(&"net_qz"))),
-		dequantise_unit(int(from.get(&"net_qw")))
-	)
+	var received: Variant = from.get(&"net_orientation")
+	var rotation: Quaternion = received if received is Quaternion else Quaternion.IDENTITY
 
-	# Normalised on arrival, and it is not optional: four independently quantised
-	# components do not make a unit quaternion, and Basis(q) on one that is not unit
-	# scales the whole vehicle. The symptom is a car that grows and shrinks as it turns,
-	# which reads as a rendering bug rather than as a wire format.
+	# Normalised on arrival, and it is not optional: a quantised quaternion is not quite
+	# unit, and Basis(q) on one that is not unit scales the whole vehicle. The symptom is
+	# a car that grows and shrinks as it turns, which reads as a rendering bug rather
+	# than as a wire format.
 	if rotation.length_squared() < 0.000001:
 		rotation = Quaternion.IDENTITY
 	else:
@@ -152,6 +149,7 @@ static func apply(node: Node3D, from: Object) -> void:
 
 
 ## A quaternion component, -1..1, as a signed integer of [constant QUAT_BITS] plus sign.
+## No longer on the wire (see the class notes); kept because it is public.
 static func quantise_unit(value: float) -> int:
 	var scale := float((1 << QUAT_BITS) - 1)
 	return clampi(int(round(clampf(value, -1.0, 1.0) * scale)), -int(scale), int(scale))

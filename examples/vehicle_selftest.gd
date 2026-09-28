@@ -1325,7 +1325,7 @@ func _test_net_sync() -> void:
 	_section("replication")
 
 	var specs := DotVehicleNetSync.specs()
-	_check(specs.size() == 11, "there is a spec for what crosses the wire",
+	_check(specs.size() == 8, "there is a spec for what crosses the wire",
 		"%d" % specs.size())
 
 	var spawner := _spawner()
@@ -1394,10 +1394,7 @@ class _NetProbe:
 	var net_x: float = 0.0
 	var net_y: float = 0.0
 	var net_z: float = 0.0
-	var net_qx: int = 0
-	var net_qy: int = 0
-	var net_qz: int = 0
-	var net_qw: int = 0
+	var net_orientation: Quaternion = Quaternion.IDENTITY
 	var net_speed: int = 0
 	var net_steering: int = 0
 	var net_health: int = 0
