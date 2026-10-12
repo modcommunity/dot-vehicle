@@ -26,6 +26,12 @@ var brake: float = 0.0
 
 var handbrake: bool = false
 
+## Below this forward speed, in metres per second, [method brake_then_reverse] counts a
+## vehicle as stopped and lets the reverse key reverse. A walking pace: low enough that
+## nobody notices the moment the brake becomes reverse, high enough that a vehicle rocking
+## on its springs at rest never needs a second press.
+const STOPPED_BELOW := 0.8
+
 ## The rider wants out. Acted on once, on the tick it arrives.
 var exit_requested: bool = false
 
@@ -42,6 +48,34 @@ static func make(
 	cmd.steer = p_steer
 	cmd.brake = p_brake
 	return cmd
+
+
+## One key for slowing down and for reversing, the way a driving game's keys work: a
+## negative [member throttle] while still rolling forward faster than [param stopped_below]
+## becomes the foot brake, and turns into reverse only once the vehicle has (nearly)
+## stopped. The same the other way: throttle while rolling backwards brakes first. Returns
+## itself so it chains after building the command.
+##
+## [b]Opt-in, called by the game that maps keys onto a command[/b], never by the chassis.
+## A bot or a scripted manoeuvre that asks for reverse thrust while moving forward (a
+## three-point turn settling between legs) means it, and a chassis that rewrote it would
+## change every autopilot in the family. [param forward_speed] is
+## [method DotVehicleInstance.forward_speed], read where the command is applied, which is
+## the server for a vehicle.
+##
+## [b]Why the brake rather than reverse thrust:[/b] reverse is a fraction of the engine
+## ([member DotVehicleTunables.reverse_fraction]) and the brake is usually several times
+## that, so a vehicle on reverse thrust took two to three times as far to stop as the key
+## list promised (a 2 t bus from 15 m/s: 21 m against 7.6 m).
+func brake_then_reverse(forward_speed: float, stopped_below: float = STOPPED_BELOW) -> DotVehicleCommand:
+	if throttle < 0.0 and forward_speed > stopped_below:
+		brake = maxf(brake, -throttle)
+		throttle = 0.0
+	elif throttle > 0.0 and forward_speed < -stopped_below:
+		brake = maxf(brake, throttle)
+		throttle = 0.0
+
+	return self
 
 
 ## Clamps everything into range. Called by the chassis before anything is applied.

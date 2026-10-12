@@ -30,7 +30,13 @@ Two more from the same source, and both are why the forces are divided:
 
 That damping is `tunables.linear_damp`, written onto the body in `REPLACE` mode by `apply_body()`. 0.1 per second is Godot's project default, kept so no consumer's handling moved; it is a drag proportional to speed, which on a 4 t truck at 19 m/s was 8.5 kN and capped its speed. A chassis that models its own air and rolling resistance (delivery's `DdDrivetrain`) sets 0. A body that set its own damping on top of the project's (Godot's default COMBINE mode adds them) carries the sum in the tunables instead: mg-smash-copter's chopper is 0.22, its 0.12 plus the 0.1.
 
-The raycast vehicle does not lock a wheel: a handbrake slows the rear and never breaks it loose into a slide (measured: a one-second handbrake turn at 15 m/s yaws less than the same turn without it, before and after this change).
+The raycast vehicle does not lock a wheel: a handbrake slows the rear and never breaks it loose into a slide (measured: a one-second handbrake turn at 15 m/s yaws less than the same turn without it, before and after this change). The slide is `tunables.handbrake_grip_fraction`: the handbrake wheels' `wheel_friction_slip` times that while it is held, back the tick it is released. 1.0 by default, so nothing tuned before moved. It is a threshold, not a slope: on mg-buses-from-hell's 2 t bus, from 12 m/s at full lock for a second, 1.0 turned 14 degrees and stopped dead, 0.25 and 0.2 still turned less than no handbrake (41), 0.15 stepped the back end out (71 degrees, 7 m/s left) and 0.1 spun it round. A sliding tyre also brakes worse: the same bus's straight-line handbrake stop went from 6.3 m to 16 m. Tune it per vehicle by driving it, and render it.
+
+## One key to brake and reverse
+
+`DotVehicleCommand.brake_then_reverse(forward_speed)` turns a negative throttle into the foot brake while the vehicle still rolls forward faster than `STOPPED_BELOW` (0.8 m/s), and into reverse once it has nearly stopped; a positive throttle while rolling backwards brakes the same way. That is how a driving game's S key works, and reverse thrust is not a substitute: it is `reverse_fraction` of the engine, a fraction of the brake, so a bus on S took 21 m from 15 m/s against the brake's 7.6.
+
+**Opt-in, called by the game where it maps keys to a command, never by the chassis.** A bot's three-point turn asks for reverse while still rolling forward and means it; a chassis that rewrote every negative throttle would change every autopilot in the family. The speed is the vehicle's `forward_speed()` read where the command is applied, which is the server. mg-buses-from-hell and game-playground call it; mg-dangerous-delivery does the same in its client sampler with its own threshold.
 
 ## Why Godot's raycast vehicle is used rather than replaced
 

@@ -12,7 +12,9 @@ extends RefCounted
 #    DotVehicleNetSync.
 # 2: brakes are forces (brake_force and handbrake_force are newtons times the physics step on
 #    each wheel; before, Godot read them as an impulse per step); DotVehicleTunables.linear_damp,
-#    written onto the body in REPLACE mode; DotVehicleWheeled.step_seconds(). OLDEST stays 1: a
-#    pack built before compiles and runs, with brakes that now mean their figures.
+#    written onto the body in REPLACE mode; DotVehicleWheeled.step_seconds();
+#    DotVehicleCommand.brake_then_reverse() and STOPPED_BELOW (one key to brake and reverse,
+#    opt-in); DotVehicleTunables.handbrake_grip_fraction (1.0, no change, by default). OLDEST
+#    stays 1: a pack built before compiles and runs, with brakes that now mean their figures.
 const LEVEL := 2
 const OLDEST := 1

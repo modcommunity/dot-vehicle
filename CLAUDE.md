@@ -43,6 +43,8 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - `adopt()` never places, reparents or frees the node, refuses a body that is already a vehicle, and still counts against the budget. [handover](docs/handover.md#adopt-the-second-entry-point)
 - Vehicles are server-authoritative and never predicted; a client smooths the interpolated transform. [driving](docs/driving.md#server-authoritative-and-not-predicted)
 - Brakes are newtons: `DotVehicleWheeled` writes `force × physics step / wheels`, because Godot reads a wheel's `brake` as an impulse per step; a subclass that sets `brake` itself multiplies by `step_seconds()`. The body's linear damping is `tunables.linear_damp` (REPLACE), never the project's. [driving](docs/driving.md#brakes-are-forces-and-godot-wants-an-impulse)
+- S that brakes and then reverses is `DotVehicleCommand.brake_then_reverse(forward_speed)`, called by the game's key mapping, never the chassis (a bot's reverse means reverse). [driving](docs/driving.md#one-key-to-brake-and-reverse)
+- A handbrake slide is `handbrake_grip_fraction` (1.0 = none); a threshold, not a slope, and it lengthens the handbrake's straight stop. [driving](docs/driving.md#brakes-are-forces-and-godot-wants-an-impulse)
 - `DotVehicleCommand`: forward is -Z, +1 steers right. Only `DotVehicleWheeled` translates to Godot's signs, and it divides engine force across traction wheels. [driving](docs/driving.md#two-measured-facts-about-godots-vehicle)
 - A new kind of vehicle is a `DotVehicleChassis` subclass named by `chassis_script_path`, never a fork. [driving](docs/driving.md#why-godots-raycast-vehicle-is-used-rather-than-replaced)
 - The bot driver steers in the vehicle's own basis, brakes for corners and on arrival, reverses out when stuck, and never paths; a person in the seat beats the autopilot. [driving](docs/driving.md#the-bot-driver)
@@ -54,7 +56,8 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | How something that is not a person drives | `DotVehicleDriver`, on `DotVehicleInstance.autopilot` |
 | How hard a driver corners, and when it gives up | `DotVehicleDriver.corner_slowdown` / `stuck_time` / `reverse_time` / `waypoint_radius` |
 | What a vehicle is | `DotVehicleDef` in a `DotVehicleCatalogue` |
-| How it handles | `DotVehicleTunables`, layered like every `DotConfig` |
+| How it handles | `DotVehicleTunables`, layered like every `DotConfig` (`handbrake_grip_fraction` for a handbrake slide) |
+| Whether back brakes before it reverses | `DotVehicleCommand.brake_then_reverse()` in the game's key mapping |
 | A kind that behaves differently | `DotVehicleChassis` subclass, named by path (`chassis_script_path`) |
 | Where riders sit and where they get out | `DotVehicleSeat` |
 | What happens to a player who gets in | `spawner.ride.on_seated` / `on_unseated` |

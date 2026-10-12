@@ -103,6 +103,15 @@ extends DotConfig
 ## caught. A player can drive out of the second and cannot drive out of the first.
 @export_range(0.1, 2.0, 0.01) var rear_grip_fraction: float = 0.9
 
+## Fraction of the rear wheels' grip left while the handbrake is held.
+##
+## [b]1.0, no change, by default[/b], so every vehicle tuned before it handles as it did.
+## Godot's raycast vehicle never locks a wheel, so a handbrake only slows the rear and the
+## back end never steps out; under 1.0 the rear tyres let go while it is held, which is
+## the slide a handbrake turn is for. The handbrake wheels get it, as for
+## [member rear_grip_fraction], and it comes back the tick the key is released.
+@export_range(0.05, 1.0, 0.01) var handbrake_grip_fraction: float = 1.0
+
 @export_group("Body")
 
 ## Mass in kilograms. Written onto the body at spawn.

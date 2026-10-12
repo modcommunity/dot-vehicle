@@ -18,7 +18,7 @@ const SKIFF := "res://fixtures/skiff.tscn"
 const RIDER := "res://fixtures/rider.tscn"
 const CRATE := "res://fixtures/crate.tscn"
 
-const CHECKS := 162
+const CHECKS := 168
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -380,6 +380,21 @@ func _test_commands() -> void:
 	)
 
 	_check(DotVehicleCommand.new().is_idle(), "an empty command is idle")
+
+	# One key to slow down and to reverse. A direction each way, because "it braked" alone
+	# would pass for a helper that braked a vehicle trying to reverse from a standstill.
+	var rolling := DotVehicleCommand.make(-1.0).brake_then_reverse(12.0)
+	_check(rolling.throttle == 0.0 and rolling.brake == 1.0,
+		"back while rolling forward is the brake, not reverse thrust",
+		"throttle %.2f, brake %.2f" % [rolling.throttle, rolling.brake])
+	var stopped := DotVehicleCommand.make(-1.0).brake_then_reverse(0.3)
+	_check(stopped.throttle == -1.0 and stopped.brake == 0.0,
+		"and once (nearly) stopped it reverses",
+		"throttle %.2f, brake %.2f" % [stopped.throttle, stopped.brake])
+	var reversing := DotVehicleCommand.make(0.6).brake_then_reverse(-5.0)
+	_check(reversing.throttle == 0.0 and is_equal_approx(reversing.brake, 0.6),
+		"and forward while rolling backwards brakes first, as hard as the key is pressed",
+		"throttle %.2f, brake %.2f" % [reversing.throttle, reversing.brake])
 	_done()
 
 
@@ -676,6 +691,26 @@ func _test_brakes() -> void:
 	var coasting := DotVehicleCommand.make()
 	jeep.chassis.drive(coasting, 1.0 / 60.0)
 	_check(wheels[0].brake == 0.0 and wheels[3].brake == 0.0, "and letting go takes every brake off")
+
+	# The handbrake's grip. 1.0 by default, so the rear tyres keep theirs and nothing tuned
+	# before it moved; under 1.0 the rear tyres let go while it is held and get their grip
+	# back when it is released (the slide is measured in mg-buses-from-hell, on a bus).
+	var rear_grip := 3.2 * 0.9
+	jeep.chassis.drive(both, 1.0 / 60.0)
+	_check(is_equal_approx(wheels[3].wheel_friction_slip, rear_grip),
+		"by default the handbrake leaves the rear tyres' grip alone",
+		"%.2f" % wheels[3].wheel_friction_slip)
+	jeep.chassis.tunables.handbrake_grip_fraction = 0.25
+	jeep.chassis.drive(both, 1.0 / 60.0)
+	_check(is_equal_approx(wheels[3].wheel_friction_slip, rear_grip * 0.25)
+			and is_equal_approx(wheels[0].wheel_friction_slip, 3.2),
+		"with handbrake_grip_fraction the rear tyres let go while it is held, and only the rear",
+		"rear %.2f, front %.2f" % [wheels[3].wheel_friction_slip, wheels[0].wheel_friction_slip])
+	jeep.chassis.drive(coasting, 1.0 / 60.0)
+	_check(is_equal_approx(wheels[3].wheel_friction_slip, rear_grip),
+		"and get it back the tick it is released",
+		"%.2f" % wheels[3].wheel_friction_slip)
+	jeep.chassis.tunables.handbrake_grip_fraction = 1.0
 
 	ground.queue_free()
 	spawner.queue_free()

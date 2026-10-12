@@ -33,6 +33,10 @@ var _driven_wheels: Array[VehicleWheel3D] = []
 ## half when a game marked every wheel as both.
 var _handbrake_wheels: Array[VehicleWheel3D] = []
 
+## Whether the handbrake wheels are on their handbrake grip now, so the grip is written
+## only on the tick the handbrake goes on or comes off.
+var _rear_grip_held := false
+
 
 func _setup() -> DotResult:
 	var body := vehicle.node as VehicleBody3D
@@ -113,6 +117,23 @@ func _apply_wheel_tunables() -> void:
 			if rear else tunables.friction_slip
 		)
 
+	_rear_grip_held = false
+
+
+## The rear wheels' grip with the handbrake held or not
+## ([member DotVehicleTunables.handbrake_grip_fraction]).
+func _set_rear_grip(held: bool) -> void:
+	if held == _rear_grip_held:
+		return
+
+	_rear_grip_held = held
+	var grip := tunables.friction_slip * tunables.rear_grip_fraction
+	if held:
+		grip *= tunables.handbrake_grip_fraction
+
+	for wheel in _handbrake_wheels:
+		wheel.wheel_friction_slip = grip
+
 
 func _drive(command: DotVehicleCommand, _delta: float) -> void:
 	var body := vehicle.node as VehicleBody3D
@@ -171,6 +192,10 @@ func _drive(command: DotVehicleCommand, _delta: float) -> void:
 
 	for wheel in _wheels:
 		wheel.brake = foot + (hand if _handbrake_wheels.has(wheel) else 0.0)
+
+	# The slide. The brake alone never breaks a rear wheel loose (Godot's vehicle does not
+	# lock one), so a handbrake turn is the rear tyres' grip let go while it is held.
+	_set_rear_grip(command.handbrake and tunables.handbrake_grip_fraction < 1.0)
 
 
 ## The length of one physics step, in seconds, which is what turns a force into the
