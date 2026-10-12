@@ -57,6 +57,8 @@ func apply_body() -> void:
 		return
 
 	rigid.mass = tunables.mass
+	rigid.linear_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
+	rigid.linear_damp = tunables.linear_damp
 
 	if tunables.centre_of_mass_drop > 0.0:
 		# The difference between a car and a thing that rolls over at every corner. A

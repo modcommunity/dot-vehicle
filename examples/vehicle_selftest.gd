@@ -18,13 +18,13 @@ const SKIFF := "res://fixtures/skiff.tscn"
 const RIDER := "res://fixtures/rider.tscn"
 const CRATE := "res://fixtures/crate.tscn"
 
-const CHECKS := 155
+const CHECKS := 162
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 25
+const SECTIONS := 26
 
 var _passed := 0
 var _failed := 0
@@ -59,6 +59,7 @@ func _run() -> void:
 	_test_budgets()
 	_test_chassis()
 	await _test_driving()
+	await _test_brakes()
 	_test_driver_steering()
 	_test_driver_route()
 	_test_driver_stuck()
@@ -606,6 +607,118 @@ func _test_driving() -> void:
 	_done()
 
 
+## Brakes are forces. Godot reads a wheel's `brake` as an impulse per physics step, and
+## the chassis handed it newtons until 2026-10: a car stopped from 50 km/h in 5.5 m and a
+## loaded truck in 0.7 m, and a heavier vehicle stopped exactly as soon as a light one.
+## Measured on real bodies, at two tick rates, because both bugs are about the step.
+func _test_brakes() -> void:
+	_section("brakes")
+
+	var rate_was := Engine.physics_ticks_per_second
+	var ground := _wall(Vector3(1000, -0.5, -150), Vector3(30, 1, 400))
+
+	var at_60: float = await _stopping_distance(800.0, 60, Vector3(995, 1.0, 0))
+	var at_120: float = await _stopping_distance(800.0, 120, Vector3(1000, 1.0, 0))
+	var heavy: float = await _stopping_distance(1600.0, 60, Vector3(1005, 1.0, 0))
+
+	Engine.physics_ticks_per_second = rate_was
+
+	# 8100 N on 800 kg is 10.1 m/s², so 13.9 m/s stops in about 9.5 m. The wall it used
+	# to be was 5.5 m; a figure under 7 m is the impulse again.
+	_check(
+		at_60 > 7.0 and at_60 < 13.0,
+		"a car brakes from 50 km/h in the distance its brake force says, not a wall",
+		"%.2f m; 8100 N on 800 kg is about 9.5 m" % at_60
+	)
+	_check(
+		absf(at_120 - at_60) < at_60 * 0.1,
+		"and the same distance at 120 ticks as at 60",
+		"%.2f m against %.2f m" % [at_120, at_60]
+	)
+	_check(
+		heavy > at_60 * 1.6,
+		"and twice the mass stops in about twice the distance",
+		"%.2f m against %.2f m" % [heavy, at_60]
+	)
+
+	# The brake values on the wheels, which is where the step goes in.
+	var spawner := _spawner()
+	var jeep := spawner.spawn(&"jeep", Vector3(1000, 1.0, -300))
+	var wheels: Array[VehicleWheel3D] = []
+	for child in jeep.node.get_children():
+		if child is VehicleWheel3D:
+			wheels.append(child)
+
+	var both := DotVehicleCommand.make(0.0, 0.0, 1.0)
+	both.handbrake = true
+	jeep.chassis.drive(both, 1.0 / 60.0)
+
+	var step := (jeep.chassis as DotVehicleWheeled).step_seconds()
+	var front := wheels[0].brake
+	var rear := wheels[3].brake
+	_check(
+		is_equal_approx(front, 8100.0 * step / 4.0),
+		"a wheel's brake is its share of the force times the physics step",
+		"%.3f N·s at a %.4f s step" % [front, step]
+	)
+	_check(
+		is_equal_approx(rear, front + 12000.0 * step / 2.0),
+		"and the handbrake adds to the foot brake on the rear wheels rather than replacing it"
+	)
+
+	var body := jeep.node as RigidBody3D
+	_check(
+		body.linear_damp_mode == RigidBody3D.DAMP_MODE_REPLACE and is_equal_approx(body.linear_damp, 0.1),
+		"the tunables' damping is written onto the body, replacing the project's",
+		"mode %d, %.2f" % [body.linear_damp_mode, body.linear_damp]
+	)
+
+	var coasting := DotVehicleCommand.make()
+	jeep.chassis.drive(coasting, 1.0 / 60.0)
+	_check(wheels[0].brake == 0.0 and wheels[3].brake == 0.0, "and letting go takes every brake off")
+
+	ground.queue_free()
+	spawner.queue_free()
+	await get_tree().physics_frame
+	_done()
+
+
+## Metres a jeep of [param mass] takes to stop from 50 km/h at [param rate] physics ticks.
+func _stopping_distance(mass: float, rate: int, at: Vector3) -> float:
+	Engine.physics_ticks_per_second = rate
+	await get_tree().physics_frame
+
+	var spawner := _spawner()
+	var def := _jeep()
+	def.id = &"weighed"
+	def.tunables.mass = mass
+	spawner.catalogue.add(def)
+
+	var car := spawner.spawn(&"weighed", at)
+	var chassis := car.chassis as DotVehicleChassis
+	var dt := 1.0 / float(rate)
+	var go := DotVehicleCommand.make(1.0)
+	var stop := DotVehicleCommand.make(0.0, 0.0, 1.0)
+
+	var guard := rate * 15
+	while car.forward_speed() < 13.89 and guard > 0:
+		chassis.drive(go, dt)
+		await get_tree().physics_frame
+		guard -= 1
+
+	var start := car.position()
+	guard = rate * 15
+	while car.speed() > 0.2 and guard > 0:
+		chassis.drive(stop, dt)
+		await get_tree().physics_frame
+		guard -= 1
+
+	var distance := car.position().distance_to(start)
+	spawner.queue_free()
+	await get_tree().physics_frame
+	return distance
+
+
 # --- The handover -------------------------------------------------------------
 
 # --- The driver ---------------------------------------------------------------
@@ -966,7 +1079,6 @@ func _test_driver_drives_a_car() -> void:
 
 	# And a person takes it over rather than fighting it for the wheel.
 	var rider := _rider()
-	_world.add_child(rider)
 	spawner.ride.enter(vehicle, &"alice", rider)
 	spawner.set_command(vehicle.instance_id, &"alice", DotVehicleCommand.make(0.0, 0.0, 1.0))
 

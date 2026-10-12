@@ -22,6 +22,16 @@ Two more from the same source, and both are why the forces are divided:
 - `set_engine_force` writes the same figure onto **every traction wheel**, so a four-wheel-drive scene given the whole number accelerates twice as hard as a rear-wheel-drive one from the same tunables.
 - `set_brake` writes onto **every wheel**, traction or not.
 
+## Brakes are forces, and Godot wants an impulse
+
+`brake_force` and `handbrake_force` are newtons at the road. Godot's wheel `brake` is not: `_update_friction` uses it as Bullet's `maxImpulse` for the rolling friction at the contact, in newton-seconds, once per physics step (the engine force on the line above is multiplied by the step; the brake is not). Handed newtons, a wheel could cancel more motion every step than the car had, so every vehicle stopped as hard as its tyres allowed whatever its tunables said: the default car from 50 km/h in 5.5 m, a loaded delivery truck in 0.7 m, and a car of twice the mass in exactly the same distance.
+
+`DotVehicleWheeled` writes `force × step / wheels` onto every wheel, with the handbrake's share **added** on the rear wheels. The step is `step_seconds()`, the body's physics delta (so `Engine.time_scale` and a game ticking its vehicles at its own rate change nothing), never the delta `drive()` was handed. Measured on the suite's 800 kg jeep with the default 8100 N: 8.96 m from 50 km/h at 60 ticks, 8.83 m at 120, 16.35 m at twice the mass. Two more facts from the same function: **a wheel with any engine force ignores its brake** (throttle and brake together is throttle), and **with neither, a wheel has no rolling resistance at all**, so a coasting vehicle is slowed only by the body's damping.
+
+That damping is `tunables.linear_damp`, written onto the body in `REPLACE` mode by `apply_body()`. 0.1 per second is Godot's project default, kept so no consumer's handling moved; it is a drag proportional to speed, which on a 4 t truck at 19 m/s was 8.5 kN and capped its speed. A chassis that models its own air and rolling resistance (delivery's `DdDrivetrain`) sets 0.
+
+The raycast vehicle does not lock a wheel: a handbrake slows the rear and never breaks it loose into a slide (measured: a one-second handbrake turn at 15 m/s yaws less than the same turn without it, before and after this change).
+
 ## Why Godot's raycast vehicle is used rather than replaced
 
 `VehicleBody3D` is a raycast vehicle: a ray per wheel, a spring along it, a friction model at the contact point. Writing that again in GDScript would be the same algorithm, several hundred lines slower, on the main thread, and it is the part that is already correct.

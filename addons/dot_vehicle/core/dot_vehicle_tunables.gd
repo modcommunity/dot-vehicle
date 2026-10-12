@@ -37,11 +37,18 @@ extends DotConfig
 ## bothers to turn round, and that reads as broken handling rather than as a choice.
 @export_range(0.0, 1.0, 0.01) var reverse_fraction: float = 0.35
 
-## Braking force, in newtons. Separate from the engine, and usually larger.
-@export_range(0.0, 100000.0, 10.0) var brake_force: float = 6000.0
+## Braking force at the road, in newtons, shared across every wheel. Separate from the
+## engine, and usually larger.
+##
+## [b]A force, so mass matters[/b]: the deceleration is this over [member mass], capped by
+## the tyres' grip. 8100 N on the default 900 kg is 0.9 g, a hard stop from 50 km/h in
+## about 11 m. Until 2026-10 the wheeled chassis handed this figure to Godot as an
+## impulse per physics step, which stopped anything in a few metres whatever it said
+## here; numbers tuned before then were tuned against that wall (docs/history.md).
+@export_range(0.0, 1000000.0, 10.0) var brake_force: float = 8100.0
 
-## Braking force the handbrake applies to the rear only.
-@export_range(0.0, 100000.0, 10.0) var handbrake_force: float = 12000.0
+## Braking force the handbrake adds on the rear wheels only, in newtons.
+@export_range(0.0, 1000000.0, 10.0) var handbrake_force: float = 12000.0
 
 @export_group("Steering")
 
@@ -108,6 +115,18 @@ extends DotConfig
 ## usually at the axle line or above it. Every physics-vehicle tutorial ends with this
 ## line and most of them do not say why.
 @export_range(0.0, 3.0, 0.01) var centre_of_mass_drop: float = 0.5
+
+## Linear damping, per second, written onto the body in place of the project's.
+##
+## [b]A drag proportional to speed[/b], and Godot's raycast vehicle has no other: with no
+## throttle and no brake a wheel puts no rolling resistance on the road at all, so this is
+## what makes a coasting vehicle slow down. 0.1 is Godot's project default, kept so the
+## handling every game was tuned on did not move. [b]Written onto the body (REPLACE)[/b]
+## rather than left to the project setting, which is somebody else's and which a pack
+## does not carry: the same number was 8.5 kN of drag on a delivery truck at 19 m/s and
+## capped its speed below what its engine could hold. A chassis that models its own air
+## and rolling resistance sets 0.
+@export_range(0.0, 10.0, 0.01) var linear_damp: float = 0.1
 
 @export_group("Rules")
 

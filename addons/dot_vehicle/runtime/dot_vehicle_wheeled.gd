@@ -146,18 +146,47 @@ func _drive(command: DotVehicleCommand, _delta: float) -> void:
 	# undriveable.
 	body.engine_force = -force / float(maxi(_driven_wheels.size(), 1))
 
-	var brake := tunables.brake_force * command.brake
+	# THE BRAKES ARE FORCES, AND GODOT TAKES AN IMPULSE. A wheel's `brake` is Bullet's
+	# `maxImpulse` for the rolling friction at the contact, in newton-seconds, applied once
+	# per physics step (`_update_friction` in the same source; the engine force, by
+	# contrast, is multiplied by the step there). Handed newtons, every wheel could cancel
+	# 1500 N·s of motion sixty times a second: a stock car stopped from 50 km/h in 5.5 m,
+	# and a loaded delivery truck in 0.7 m, both limited only by tyre grip. Times the
+	# step, `brake_force` is newtons again, a heavier vehicle stops later, and the distance
+	# does not change with the tick rate.
+	#
+	# Divided across EVERY wheel, because the foot brake acts on all four. Braking is a
+	# magnitude and has no sign to flip: it opposes whatever the wheel is doing. The
+	# handbrake is ADDED on its wheels rather than replacing the foot brake there, or
+	# pulling it while braking would take the foot brake off the rear axle.
+	#
+	# One more fact from that source: a wheel with any engine force on it ignores its
+	# brake entirely, so throttle and brake together is throttle.
+	var step := step_seconds()
+	var foot := tunables.brake_force * command.brake * step / float(maxi(_wheels.size(), 1))
+	var hand := (
+		tunables.handbrake_force * step / float(maxi(_handbrake_wheels.size(), 1))
+		if command.handbrake else 0.0
+	)
 
-	# Divided across EVERY wheel rather than the driven ones, because `set_brake` writes
-	# its figure onto all of them — traction or not. Braking is a magnitude and has no
-	# sign to flip: it opposes whatever the wheel is doing.
-	body.brake = brake / float(maxi(_wheels.size(), 1))
+	for wheel in _wheels:
+		wheel.brake = foot + (hand if _handbrake_wheels.has(wheel) else 0.0)
 
-	for wheel in _handbrake_wheels:
-		wheel.brake = (
-			tunables.handbrake_force / float(maxi(_handbrake_wheels.size(), 1))
-			if command.handbrake else 0.0
-		)
+
+## The length of one physics step, in seconds, which is what turns a force into the
+## impulse Godot's wheel wants. The body's own figure rather than the delta [method drive]
+## was handed: a game may tick its vehicles at its own rate, and the brake is applied
+## once per PHYSICS step whatever that rate is (and with [member Engine.time_scale]).
+func step_seconds() -> float:
+	var body := vehicle.node as Node
+
+	if body != null and body.is_inside_tree():
+		var measured := body.get_physics_process_delta_time()
+
+		if measured > 0.0:
+			return measured
+
+	return 1.0 / float(maxi(Engine.physics_ticks_per_second, 1))
 
 
 func describe() -> Dictionary:

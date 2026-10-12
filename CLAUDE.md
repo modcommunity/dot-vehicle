@@ -29,7 +29,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - Link `addons/dot_core` once ([development setup](../../docs/development-setup.md)), then the family's two steps ([game-dev/CLAUDE.md](../../CLAUDE.md#validating-anything)) and `timeout 180 godot --headless --path . res://examples/vehicle_selftest.tscn`. Exits non-zero on failure.
 - Assert a direction, never only that something moved: a car that drives backwards travels as far as one that does not. [driving](docs/driving.md#two-measured-facts-about-godots-vehicle)
 - Tests that build colliders need their own patch of world and a frame between them (`queue_free` is deferred). [history](docs/history.md)
-- Consumers: game-playground (adopted cars), mg-buses-from-hell (the buses), mg-smash-copter (a game chassis), mg-dangerous-delivery (a truck bound without the seat handover), mg-wipeout. Run the ones a change touches.
+- Consumers: game-playground (adopted cars), mg-buses-from-hell (the buses), mg-smash-copter (a game chassis), mg-dangerous-delivery (a truck bound without the seat handover, its own `DdDrivetrain`). mg-wipeout links the addon and drives nothing. Run the ones a change touches.
 
 ## Rules that bite
 
@@ -42,6 +42,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - The vehicle/chassis pair is unbound at `remove` and at the spawner's `_exit_tree`; any `RefCounted` pair that refers both ways leaks. [handover](docs/handover.md#the-vehicle-and-its-chassis-point-at-each-other)
 - `adopt()` never places, reparents or frees the node, refuses a body that is already a vehicle, and still counts against the budget. [handover](docs/handover.md#adopt-the-second-entry-point)
 - Vehicles are server-authoritative and never predicted; a client smooths the interpolated transform. [driving](docs/driving.md#server-authoritative-and-not-predicted)
+- Brakes are newtons: `DotVehicleWheeled` writes `force × physics step / wheels`, because Godot reads a wheel's `brake` as an impulse per step; a subclass that sets `brake` itself multiplies by `step_seconds()`. The body's linear damping is `tunables.linear_damp` (REPLACE), never the project's. [driving](docs/driving.md#brakes-are-forces-and-godot-wants-an-impulse)
 - `DotVehicleCommand`: forward is -Z, +1 steers right. Only `DotVehicleWheeled` translates to Godot's signs, and it divides engine force across traction wheels. [driving](docs/driving.md#two-measured-facts-about-godots-vehicle)
 - A new kind of vehicle is a `DotVehicleChassis` subclass named by `chassis_script_path`, never a fork. [driving](docs/driving.md#why-godots-raycast-vehicle-is-used-rather-than-replaced)
 - The bot driver steers in the vehicle's own basis, brakes for corners and on arrival, reverses out when stuck, and never paths; a person in the seat beats the autopilot. [driving](docs/driving.md#the-bot-driver)
