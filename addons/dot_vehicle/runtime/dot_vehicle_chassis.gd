@@ -76,6 +76,17 @@ func drive(command: DotVehicleCommand, delta: float) -> void:
 	var cmd := command if command != null else DotVehicleCommand.new()
 	cmd.sanitise()
 
+	# A body at rest falls asleep, and a sleeping VehicleBody3D ignores its wheels: the
+	# engine force and steering are read in the physics step a sleeping body does not get,
+	# and nothing about setting them wakes it (an applied force does; a wheel's does not). A
+	# car braked to a stop and left half a second drove nowhere when the throttle went down
+	# (game-playground, found measuring stopping distances, 2026-10-12). The throttle only: a
+	# brake or a wheel turned on a car at rest moves nothing, and a parked car with a bot
+	# standing on its brake should be left to sleep.
+	var rigid := vehicle.body()
+	if rigid != null and rigid.sleeping and absf(cmd.throttle) > 0.001:
+		rigid.sleeping = false
+
 	_advance_steering(cmd.steer, delta)
 	_drive(cmd, delta)
 

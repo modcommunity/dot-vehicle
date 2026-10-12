@@ -30,6 +30,8 @@ Two more from the same source, and both are why the forces are divided:
 
 That damping is `tunables.linear_damp`, written onto the body in `REPLACE` mode by `apply_body()`. 0.1 per second is Godot's project default, kept so no consumer's handling moved; it is a drag proportional to speed, which on a 4 t truck at 19 m/s was 8.5 kN and capped its speed. A chassis that models its own air and rolling resistance (delivery's `DdDrivetrain`) sets 0.
 
+**A sleeping body ignores its wheels.** Engine force and steering are read in a physics step a sleeping body does not get, and setting them does not wake it (an applied force does). A car braked to a stop and left half a second sat still under full throttle; `DotVehicleChassis.drive` wakes the body whenever the throttle is not zero, and only then, so a parked car with a bot standing on its brake still sleeps.
+
 The raycast vehicle does not lock a wheel: a handbrake slows the rear and never breaks it loose into a slide (measured: a one-second handbrake turn at 15 m/s yaws less than the same turn without it, before and after this change).
 
 ## Why Godot's raycast vehicle is used rather than replaced

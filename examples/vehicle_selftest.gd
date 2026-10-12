@@ -18,7 +18,7 @@ const SKIFF := "res://fixtures/skiff.tscn"
 const RIDER := "res://fixtures/rider.tscn"
 const CRATE := "res://fixtures/crate.tscn"
 
-const CHECKS := 162
+const CHECKS := 163
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -676,6 +676,21 @@ func _test_brakes() -> void:
 	var coasting := DotVehicleCommand.make()
 	jeep.chassis.drive(coasting, 1.0 / 60.0)
 	_check(wheels[0].brake == 0.0 and wheels[3].brake == 0.0, "and letting go takes every brake off")
+
+	# A car at rest falls asleep, and a sleeping VehicleBody3D ignores its wheels.
+	for _i in 30:
+		jeep.chassis.drive(coasting, 1.0 / 60.0)
+		await get_tree().physics_frame
+	body.sleeping = true
+	var parked := jeep.position()
+	for _i in 60:
+		jeep.chassis.drive(DotVehicleCommand.make(1.0), 1.0 / 60.0)
+		await get_tree().physics_frame
+	_check(
+		jeep.position().distance_to(parked) > 0.5 and jeep.forward_speed() > 0.5,
+		"a car that fell asleep at rest drives off when the throttle goes down",
+		"%.2f m, asleep: %s" % [jeep.position().distance_to(parked), body.sleeping]
+	)
 
 	ground.queue_free()
 	spawner.queue_free()
