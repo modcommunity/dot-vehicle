@@ -43,6 +43,10 @@ var debris: DotVehicleDebris = null
 ## False on a client's mirror: nothing is felt, losses arrive through [method apply_state].
 var simulate: bool = true
 
+## Returns false while hits must not break anything (spawn protection, a practice lap). Unset,
+## every hit counts. A callable rather than a flag so the game's own rule is asked each hit.
+var harm_gate: Callable = Callable()
+
 ## The change of speed (m/s) in one step below which nothing is a hit.
 var hit_threshold: float = 1.5
 
@@ -124,6 +128,8 @@ func part_node(id: StringName) -> Node3D:
 func hit(local_at: Vector3, dv: float) -> Array[Dictionary]:
 	last_hit = dv
 	last_hit_at = local_at
+	if harm_gate.is_valid() and not bool(harm_gate.call()):
+		return []
 	var events := damage.hit(local_at, dv)
 	_show(events, local_at, dv)
 	return events
@@ -193,7 +199,7 @@ func _feel() -> void:
 
 		if contact and not _was_in_contact[i]:
 			var down := -_last_point_v[i].dot(wheel.get_contact_normal())
-			if down >= landing_threshold:
+			if down >= landing_threshold and (not harm_gate.is_valid() or bool(harm_gate.call())):
 				last_hit = down
 				last_hit_at = wheel.position
 				_show(damage.hit_wheel(i, down), wheel.position, down)

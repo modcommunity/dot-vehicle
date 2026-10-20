@@ -93,6 +93,8 @@ static func carve(mesh: MeshInstance3D, region: AABB) -> MeshInstance3D:
 	var keep_mesh := ArrayMesh.new()
 	var cut_mesh := ArrayMesh.new()
 	var any := false
+	var bounds := AABB()
+	var has_bounds := false
 
 	for s in mesh.mesh.get_surface_count():
 		var arrays := mesh.mesh.surface_get_arrays(s)
@@ -110,8 +112,14 @@ static func carve(mesh: MeshInstance3D, region: AABB) -> MeshInstance3D:
 
 		for k in range(0, idx.size() - 2, 3):
 			var middle := (verts[idx[k]] + verts[idx[k + 1]] + verts[idx[k + 2]]) / 3.0
-			var dest := cut if region.has_point(middle) else keep
+			var inside := region.has_point(middle)
+			var dest := cut if inside else keep
 			dest.append(idx[k]); dest.append(idx[k + 1]); dest.append(idx[k + 2])
+
+			if inside:
+				for v in [verts[idx[k]], verts[idx[k + 1]], verts[idx[k + 2]]]:
+					bounds = AABB(v, Vector3.ZERO) if not has_bounds else bounds.expand(v)
+					has_bounds = true
 
 		if not cut.is_empty():
 			any = true
@@ -132,6 +140,8 @@ static func carve(mesh: MeshInstance3D, region: AABB) -> MeshInstance3D:
 	out.mesh = cut_mesh
 	out.transform = mesh.transform
 	out.name = "%s_cut" % mesh.name
+	# The piece's own box, kept on its mesh (which a duplicate shares), for culling and for _bounds.
+	cut_mesh.custom_aabb = bounds
 	if mesh.get_parent() != null:
 		mesh.get_parent().add_child(out)
 	return out
@@ -224,7 +234,11 @@ static func _bounds(node: Node3D) -> AABB:
 		if mesh == null or mesh.mesh == null:
 			continue
 
-		var local := (inverse * mesh.global_transform) * mesh.mesh.get_aabb() if mesh.is_inside_tree() else mesh.mesh.get_aabb()
+		# A carved piece keeps every vertex of the whole model (only its triangles are its own), so
+		# its mesh's box is the whole body's; carve() keeps the piece's own as the custom box.
+		var custom: AABB = (mesh.mesh as ArrayMesh).custom_aabb if mesh.mesh is ArrayMesh else AABB()
+		var own := custom if custom.has_volume() else mesh.mesh.get_aabb()
+		var local := (inverse * mesh.global_transform) * own if mesh.is_inside_tree() else own
 		out = local if first else out.merge(local)
 		first = false
 
@@ -235,7 +249,9 @@ func _add_box(body: RigidBody3D, box: AABB, where: Transform3D) -> void:
 	var collider := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
 	# The node's own scale is in [param where]; the box is in its unscaled frame.
-	var s := where.basis.get_scale()
+	# Absolute: a mirrored node (a left wheel drawn from a right one) has a negative scale, and
+	# a negative box clamps to the smallest, which dropped a whole wheel half into the road.
+	var s := where.basis.get_scale().abs()
 	shape.size = Vector3(maxf(box.size.x * s.x, 0.08), maxf(box.size.y * s.y, 0.08), maxf(box.size.z * s.z, 0.08))
 	collider.shape = shape
 	body.add_child(collider)

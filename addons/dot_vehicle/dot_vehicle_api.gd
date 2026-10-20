@@ -19,6 +19,6 @@ extends RefCounted
 # 3: what comes off: DotVehicleDamage (parts and wheels as data, to_dict/apply_dict for the
 #    wire), DotVehicleBreakage (feels contact and landing hits, burst tyres and lost wheels
 #    that drag and pull, mass taken off with a load), DotVehicleDebris (budgeted loose pieces,
-#    carve() for a one-piece model); DotVehicleWheeled.wheels(), set_wheel_grip(), wheel_grip().
+#    carve() for a one-piece model), DotVehicleBreakage.harm_gate; DotVehicleWheeled.wheels(), set_wheel_grip(), wheel_grip().
 const LEVEL := 3
 const OLDEST := 1
