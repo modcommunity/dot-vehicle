@@ -37,6 +37,11 @@ var _handbrake_wheels: Array[VehicleWheel3D] = []
 ## only on the tick the handbrake goes on or comes off.
 var _rear_grip_held := false
 
+## A wheel's own share of the grip (wheel -> fraction; absent is 1). What a burst tyre or a hub
+## on the road leaves ([DotVehicleBreakage]); multiplied into every grip this class writes, so a
+## change of weather or the handbrake does not give a burst tyre its grip back.
+var _wheel_grip: Dictionary = {}
+
 
 func _setup() -> DotResult:
 	var body := vehicle.node as VehicleBody3D
@@ -115,9 +120,27 @@ func _apply_wheel_tunables() -> void:
 		wheel.wheel_friction_slip = (
 			tunables.friction_slip * tunables.rear_grip_fraction
 			if rear else tunables.friction_slip
-		)
+		) * float(_wheel_grip.get(wheel, 1.0))
 
 	_rear_grip_held = false
+
+
+## The wheels, in child order: the order [DotVehicleDamage]'s wheels are numbered in.
+func wheels() -> Array[VehicleWheel3D]:
+	return _wheels
+
+
+## Sets [param wheel]'s own share of the grip (1 is whole) and writes the grip again.
+func set_wheel_grip(wheel: VehicleWheel3D, fraction: float) -> void:
+	if is_equal_approx(fraction, 1.0):
+		_wheel_grip.erase(wheel)
+	else:
+		_wheel_grip[wheel] = maxf(fraction, 0.0)
+	_apply_wheel_tunables()
+
+
+func wheel_grip(wheel: VehicleWheel3D) -> float:
+	return float(_wheel_grip.get(wheel, 1.0))
 
 
 ## The rear wheels' grip with the handbrake held or not
@@ -132,7 +155,7 @@ func _set_rear_grip(held: bool) -> void:
 		grip *= tunables.handbrake_grip_fraction
 
 	for wheel in _handbrake_wheels:
-		wheel.wheel_friction_slip = grip
+		wheel.wheel_friction_slip = grip * float(_wheel_grip.get(wheel, 1.0))
 
 
 func _drive(command: DotVehicleCommand, _delta: float) -> void:

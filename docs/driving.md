@@ -74,6 +74,14 @@ What is **not** already there is the part `DotVehicleWheeled` is: wheel properti
 
 The suite drives a **kinematic toy car** for the driver rather than a `VehicleBody3D`. What is tested is the decision (does it turn the right way, slow for the corner, notice it is stuck), and a real body answers that through a suspension model, a friction model and a solver, none of which is this addon's.
 
+## Parts that come off
+
+`DotVehicleDamage` is the model and has no nodes: parts (an id, a kind, a centre in the body's frame, a reach, a strength, a mass, the drawn node's path) and wheels (a tyre strength that bursts it, a hub strength that takes it off). A hit is a change of speed in m/s at a point, falling off linearly with distance over each part's reach, and anything under `min_share` of a part's strength is ignored, so a long scrape wears nothing while one hard swipe takes a mirror. A hit as a force or an impulse would need a strength table per vehicle mass; a change of speed does not.
+
+`DotVehicleBreakage` is a child of the body. It sums the body's contact impulses each step (divided by the mass, that is the change of speed; `get_contact_local_position` is a world position in Godot 4 despite its name) and reads each wheel's landing from its point velocity into the contact normal on the step it touches down. A burst tyre keeps `popped_grip` of its grip, rolls on a smaller radius and thumps once a turn; a lost wheel's corner rides on its hub (half the radius), grips like steel, gives no traction, drags at `hub_drag` of its corner's load (which is the pull to that side) and emits `scraping` for the sparks. A part's mass comes off the body with it, which is how a load lost changes the drive. Measured in the suite: a rear-right wheel gone pulls a car right and costs it distance, and that corner sits lower than the other three.
+
+Debris is cosmetic on every machine. Thrown pieces are copies of the drawn node (the original is hidden, so a repair only shows it again), live in a `DotVehicleDebris` with a budget, and collide only with what its `collision_mask` names, the road: a rigid body comes out differently on two machines, so a piece that could push a vehicle would split a server from its clients. The server decides losses; `to_dict()` carries them as ids and wheel states, and a client's breakage with `simulate = false` shows them through `apply_state` with the velocities the server sent. `DotVehicleDebris.carve` moves the triangles of a one-piece mesh inside a region onto a node of their own, so a model with no separate door can still lose one.
+
 ## Deliberately not here
 
 - **No prediction.** A decision, not a gap.

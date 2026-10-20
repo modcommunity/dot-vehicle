@@ -18,13 +18,13 @@ const SKIFF := "res://fixtures/skiff.tscn"
 const RIDER := "res://fixtures/rider.tscn"
 const CRATE := "res://fixtures/crate.tscn"
 
-const CHECKS := 168
+const CHECKS := 192
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 26
+const SECTIONS := 28
 
 var _passed := 0
 var _failed := 0
@@ -73,6 +73,8 @@ func _run() -> void:
 	_test_disconnects()
 	await _test_no_leaked_nodes()
 	_test_net_sync()
+	_test_damage_model()
+	await _test_breakage()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -1546,3 +1548,223 @@ class _NetProbe:
 	var net_steering: int = 0
 	var net_health: int = 0
 	var net_occupancy: int = 0
+
+
+# --- Damage -------------------------------------------------------------------
+
+## The model alone: no body, no physics.
+func _test_damage_model() -> void:
+	_section("damage: the model")
+
+	var d := DotVehicleDamage.new()
+	var _a := d.add_part(&"bumper", &"bumper", Vector3(0, 0.4, -2.0), 4.0, 1.0, 30.0)
+	var _b := d.add_part(&"tailgate", &"door", Vector3(0, 0.8, 2.0), 6.0, 1.0)
+	var refused := d.add_part(&"bumper", &"bumper", Vector3.ZERO, 4.0)
+	_check(not refused.ok, "a second part with the same id is refused")
+	var _w0 := d.add_wheel(Vector3(-0.9, 0.0, -1.4), 7.0, 12.0)
+
+	# A scrape is a hit under the floor: it wears nothing, however many there are.
+	for i in 20:
+		var _s := d.hit(Vector3(0, 0.4, -2.0), 1.0)
+	_check(is_equal_approx((d.parts[&"bumper"] as DotVehicleDamage.Part).health, 1.0),
+		"twenty scrapes below a part's floor wear nothing off it")
+
+	var first := d.hit(Vector3(0, 0.4, -2.0), 3.0)
+	var second := d.hit(Vector3(0, 0.4, -2.0), 3.0)
+	_check(first.is_empty() and second.size() == 1 and second[0]["id"] == &"bumper",
+		"two 3 m/s knocks take off a 4 m/s bumper, the second one does",
+		"%s then %s" % [first, second])
+	_check(not (d.parts[&"tailgate"] as DotVehicleDamage.Part).lost and is_equal_approx((d.parts[&"tailgate"] as DotVehicleDamage.Part).health, 1.0),
+		"and the tailgate four metres away felt none of it")
+	_check(is_equal_approx(d.mass_lost(), 30.0), "the bumper's mass is the mass lost", "%.1f" % d.mass_lost())
+
+	var wheel := d.hit_wheel(0, 13.0)
+	_check(wheel.size() == 2 and wheel[0]["kind"] == "popped" and wheel[1]["kind"] == "lost",
+		"one hit past the hub's strength bursts the tyre and takes the wheel, in that order", str(wheel))
+	_check(d.grip_of(0) == d.hub_grip, "and the corner grips like a hub")
+
+	var other := DotVehicleDamage.new()
+	var _c := other.add_part(&"bumper", &"bumper", Vector3(0, 0.4, -2.0), 4.0)
+	var _d := other.add_part(&"tailgate", &"door", Vector3(0, 0.8, 2.0), 6.0)
+	var _w1 := other.add_wheel(Vector3(-0.9, 0.0, -1.4), 7.0, 12.0)
+	var shown := other.apply_dict(d.to_dict())
+	_check(shown.size() == 3 and other.lost_parts() == [&"bumper"] and other.wheel_state(0) == DotVehicleDamage.Wheel.LOST,
+		"a mirror told the server's state shows the same losses as events", str(shown))
+	_check(other.apply_dict(d.to_dict()).is_empty(), "and told it again shows nothing twice")
+
+	d.repair()
+	_check(d.lost_parts().is_empty() and d.wheel_state(0) == DotVehicleDamage.Wheel.INTACT and d.mass_lost() == 0.0,
+		"a repair makes it whole")
+	_done()
+
+
+func _damaged_jeep(spawner: DotVehicleSpawner, at: Vector3, debris: DotVehicleDebris = null) -> Array:
+	var jeep := spawner.spawn(&"jeep", at)
+	var body := jeep.node as VehicleBody3D
+	var bumper := MeshInstance3D.new()
+	bumper.name = "Bumper"
+	var shape := BoxMesh.new()
+	shape.size = Vector3(1.8, 0.3, 0.2)
+	bumper.mesh = shape
+	body.add_child(bumper)
+	bumper.position = Vector3(0, 0.4, -2.0)
+	var damage := DotVehicleDamage.new()
+	var _p := damage.add_part(&"bumper", &"bumper", Vector3(0, 0.4, -2.0), 4.0, 1.5, 100.0, NodePath("Bumper"))
+	var _q := damage.add_part(&"tailgate", &"door", Vector3(0, 0.8, 2.0), 6.0, 1.0)
+	var breakage := DotVehicleBreakage.new()
+	breakage.debris = debris
+	body.add_child(breakage)
+	var _s := breakage.setup(body, damage, jeep.chassis as DotVehicleWheeled)
+	return [jeep, breakage]
+
+
+## The losses on a real body: what each does to the drive.
+func _test_breakage() -> void:
+	_section("damage: on a body")
+
+	var spawner := _spawner()
+	var ground := _wall(Vector3(2000, -0.5, -150), Vector3(60, 1, 400))
+	var debris := DotVehicleDebris.new()
+	_world.add_child(debris)
+
+	# A burst tyre: smaller, less grip, and a change of road grip does not hand it back.
+	var pair := _damaged_jeep(spawner, Vector3(1985, 1.0, 0), debris)
+	var jeep: DotVehicleInstance = pair[0]
+	var breakage: DotVehicleBreakage = pair[1]
+	var chassis := jeep.chassis as DotVehicleWheeled
+	var wheel := chassis.wheels()[0]
+	var radius := wheel.wheel_radius
+	var grip_before := wheel.wheel_friction_slip
+	breakage._show(breakage.damage.pop(0), Vector3.ZERO, 0.0)
+	chassis._apply_wheel_tunables()
+	_check(wheel.wheel_radius < radius and absf(wheel.wheel_friction_slip - grip_before * breakage.damage.popped_grip) < 0.01,
+		"a burst tyre rolls lower with less grip, and keeps it through a grip change",
+		"radius %.2f -> %.2f, grip %.2f -> %.2f" % [radius, wheel.wheel_radius, grip_before, wheel.wheel_friction_slip])
+
+	# The bumper: thrown as a copy, hidden on the body, and its mass taken off.
+	var mass := (jeep.node as RigidBody3D).mass
+	var events := breakage.hit(Vector3(0, 0.4, -2.0), 5.0)
+	var node := breakage.part_node(&"bumper")
+	_check(events.size() == 1 and not node.visible and debris.live_count() == 1,
+		"a 5 m/s hit on the bumper takes it off: hidden on the body, a loose piece in the world",
+		"%d events, visible %s, %d pieces" % [events.size(), node.visible, debris.live_count()])
+	_check(absf((jeep.node as RigidBody3D).mass - (mass - 100.0)) < 0.01, "and its mass leaves the body",
+		"%.0f -> %.0f kg" % [mass, (jeep.node as RigidBody3D).mass])
+	var piece := debris.get_child(0) as RigidBody3D
+	_check(piece != null and piece.linear_velocity.y > 0.0, "the piece is kicked away from what hit it")
+
+	breakage.repair()
+	_check(node.visible and is_equal_approx(wheel.wheel_radius, radius) and absf((jeep.node as RigidBody3D).mass - mass) < 0.01,
+		"a repair shows the bumper, refits the tyre and gives the mass back")
+	spawner.remove(jeep.instance_id)
+
+	# A lost rear wheel drags: driven straight, the car pulls toward that side.
+	var straight := await _drift(spawner, Vector3(1995, 1.0, 0), -1)
+	var pulled := await _drift(spawner, Vector3(2005, 1.0, 0), 3)
+	_check(pulled["yaw"] > straight["yaw"] + 3.0, "a lost rear-right wheel pulls the car to the right",
+		"yaw %.1f against %.1f degrees" % [pulled["yaw"], straight["yaw"]])
+	_check(pulled["dist"] < straight["dist"] * 0.95, "and drags it: less distance on the same throttle",
+		"%.1f against %.1f m" % [pulled["dist"], straight["dist"]])
+	_check(pulled["drop"] > 0.08, "and that corner sits lower, on its hub", "%.2f m" % pulled["drop"])
+	_check(pulled["sparks"] > 10, "and it scrapes: sparks to show", "%d steps" % pulled["sparks"])
+
+	# A wall at speed: the contact is felt, and the front comes off, not the back.
+	pair = _damaged_jeep(spawner, Vector3(2015, 1.0, 0), debris)
+	jeep = pair[0]
+	breakage = pair[1]
+	var wall := _wall(Vector3(2015, 1.0, -40.0), Vector3(8, 3, 1))
+	var guard := 600
+	while guard > 0 and not breakage.damage.lost_parts().has(&"bumper"):
+		jeep.chassis.drive(DotVehicleCommand.make(1.0), 1.0 / 60.0)
+		await get_tree().physics_frame
+		guard -= 1
+	_check(breakage.damage.lost_parts() == [&"bumper"], "driven into a wall, the contact takes the bumper off and leaves the tailgate",
+		"hit %.1f m/s at %s, lost %s" % [breakage.last_hit, breakage.last_hit_at, breakage.damage.lost_parts()])
+	spawner.remove(jeep.instance_id)
+	wall.queue_free()
+
+	# A client's mirror: told the state, it shows the losses with the server's velocities.
+	pair = _damaged_jeep(spawner, Vector3(2025, 1.0, 0), debris)
+	jeep = pair[0]
+	breakage = pair[1]
+	breakage.simulate = false
+	var shown := breakage.apply_state({"lost": ["bumper"], "wheels": [0, 2, 0, 0]}, {"bumper": Vector3(0, 3, -9)})
+	var fast := debris.get_children().filter(func(c: Node) -> bool: return c is RigidBody3D and (c as RigidBody3D).linear_velocity.z < -8.0)
+	_check(shown.size() == 3 and not breakage.part_node(&"bumper").visible and fast.size() == 1,
+		"a mirror shows what the server lost, thrown at the server's velocity", str(shown.size()))
+
+	# The budget: never more than it allows, the oldest going first.
+	debris.budget = 2
+	for i in 3:
+		var _x := debris.spawn_box(Transform3D(Basis(), Vector3(2030, 2.0 + i, 0)), Vector3.ONE * 0.4, null, Vector3.ZERO)
+	_check(debris.live_count() == 2, "the debris keeps to its budget", "%d live" % debris.live_count())
+
+	# Carving: a part of a one-piece mesh made a node of its own.
+	var whole := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	whole.mesh = box
+	_world.add_child(whole)
+	var tris := (whole.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size()
+	var cut := DotVehicleDebris.carve(whole, AABB(Vector3(-1, -1, 0.4), Vector3(2, 2, 1)))
+	var left := (whole.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size()
+	_check(cut != null and left < tris and left + (cut.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() == tris,
+		"carving moves the triangles in a region to a node of their own, and no others", "%d -> %d" % [tris, left])
+	_check(DotVehicleDebris.carve(whole, AABB(Vector3(5, 5, 5), Vector3.ONE)) == null, "and a region with nothing in it carves nothing")
+
+	whole.queue_free()
+	debris.queue_free()
+	spawner.queue_free()
+	ground.queue_free()
+	await get_tree().physics_frame
+	_done()
+
+
+## Drives straight for two seconds with wheel [param lose] gone (-1 for none): yaw (+ right), distance, how far that corner sank, steps with sparks.
+func _drift(spawner: DotVehicleSpawner, at: Vector3, lose: int) -> Dictionary:
+	var pair := _damaged_jeep(spawner, at)
+	var jeep: DotVehicleInstance = pair[0]
+	var breakage: DotVehicleBreakage = pair[1]
+	var body := jeep.node as VehicleBody3D
+	var sparks := [0]
+	breakage.scraping.connect(func(_w: int, _at: Vector3, _s: float) -> void: sparks[0] += 1)
+
+	for i in 30:
+		jeep.chassis.drive(DotVehicleCommand.make(0.0, 0.0, 1.0), 1.0 / 60.0)
+		await get_tree().physics_frame
+
+	var heading := -body.global_basis.z
+	var start := body.global_position
+	var drop := 0.0
+
+	if lose >= 0:
+		breakage._show(breakage.damage.lose_wheel(lose), Vector3.ZERO, 0.0)
+
+	# Three seconds at full throttle: the fixture is slow off the line, and under 2 m/s a hub
+	# makes no sparks.
+	for i in 180:
+		jeep.chassis.drive(DotVehicleCommand.make(1.0), 1.0 / 60.0)
+		await get_tree().physics_frame
+
+	var yaw := rad_to_deg(heading.signed_angle_to(-body.global_basis.z, Vector3.DOWN))
+	var dist := body.global_position.distance_to(start)
+	if lose >= 0:
+		drop = _corner_drop(body, chassis_wheel(jeep, lose))
+	spawner.remove(jeep.instance_id)
+	await get_tree().physics_frame
+	return {"yaw": yaw, "dist": dist, "drop": drop, "sparks": sparks[0]}
+
+
+func chassis_wheel(jeep: DotVehicleInstance, i: int) -> VehicleWheel3D:
+	return (jeep.chassis as DotVehicleWheeled).wheels()[i]
+
+
+## How much lower [param wheel]'s hardpoint sits than the other corners' average, metres. Against
+## the other corners rather than the ride before: the body is still settling off its drop then.
+func _corner_drop(body: VehicleBody3D, wheel: VehicleWheel3D) -> float:
+	var others := 0.0
+	var n := 0
+	for w in (body.get_children()):
+		if w is VehicleWheel3D and w != wheel:
+			others += body.to_global(w.position).y - w.position.y
+			n += 1
+	return others / maxf(n, 1) - (body.to_global(wheel.position).y - wheel.position.y)

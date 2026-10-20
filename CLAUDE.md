@@ -18,8 +18,8 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 
 | Path | What |
 | --- | --- |
-| `addons/dot_vehicle/core/` | `DotVehicleDef` (checkable without a scene), `DotVehicleCatalogue` (JSON an operator edits), `DotVehicleSeat`, `DotVehicleTunables` (a `DotConfig`), `DotVehicleCommand` (one tick of intent), `DotVehicleInstance` |
-| `addons/dot_vehicle/runtime/` | `DotVehicleSpawner` (the node a game adds; owns the ride), `DotVehicleRide` (the handover), `DotVehicleChassis` (the subclass point), `DotVehicleWheeled`, `DotVehicleHover`, `DotVehicleDriver` |
+| `addons/dot_vehicle/core/` | `DotVehicleDef` (checkable without a scene), `DotVehicleCatalogue` (JSON an operator edits), `DotVehicleSeat`, `DotVehicleTunables` (a `DotConfig`), `DotVehicleCommand` (one tick of intent), `DotVehicleInstance`, `DotVehicleDamage` (what has come off, as data) |
+| `addons/dot_vehicle/runtime/` | `DotVehicleSpawner` (the node a game adds; owns the ride), `DotVehicleRide` (the handover), `DotVehicleChassis` (the subclass point), `DotVehicleWheeled`, `DotVehicleHover`, `DotVehicleDriver`, `DotVehicleBreakage` (hits, burst tyres, lost wheels, parts thrown), `DotVehicleDebris` (the budgeted loose pieces) |
 | `addons/dot_vehicle/net/` | `DotVehicleNetSync`: what replicates, as strings; never names dot-net |
 | `fixtures/` | scenes and a chassis-by-path for the suite |
 | `examples/vehicle_selftest.tscn` | the suite; real bodies through real physics frames |
@@ -47,6 +47,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - A handbrake slide is `handbrake_grip_fraction` (1.0 = none); a threshold, not a slope, and it lengthens the handbrake's straight stop. [driving](docs/driving.md#brakes-are-forces-and-godot-wants-an-impulse)
 - `DotVehicleCommand`: forward is -Z, +1 steers right. Only `DotVehicleWheeled` translates to Godot's signs, and it divides engine force across traction wheels. [driving](docs/driving.md#two-measured-facts-about-godots-vehicle)
 - A new kind of vehicle is a `DotVehicleChassis` subclass named by `chassis_script_path`, never a fork. [driving](docs/driving.md#why-godots-raycast-vehicle-is-used-rather-than-replaced)
+- Debris never touches anything driven (`DotVehicleDebris.collision_mask` is the road): rigid bodies differ between machines, so each peer throws its own from the server's list and velocities. A hit is a change of speed at a point, never a force, so one strength table serves a van and a tipper. [driving](docs/driving.md#parts-that-come-off)
 - The bot driver steers in the vehicle's own basis, brakes for corners and on arrival, reverses out when stuck, and never paths; a person in the seat beats the autopilot. [driving](docs/driving.md#the-bot-driver)
 
 ## Where a game plugs in
@@ -68,5 +69,9 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | Whether a leaving owner's vehicles go | `clean_up_on_leave` |
 | Who may spawn what | `DotVehicleDef.entitlement` plus the spawner's `entitlements` callable |
 | What replicates | `DotVehicleNetSync.specs()`, resolved by the game's bridge |
+| What comes off, and how hard it has to be hit | `DotVehicleDamage.add_part` (strength is a change of speed at the part, m/s) and the wheels' tyre and hub strengths in `DotVehicleBreakage.setup` |
+| What a burst tyre or a hub does to the drive | `DotVehicleDamage.popped_*` / `hub_*` |
+| Where pieces go and how many | a `DotVehicleDebris` on `breakage.debris` (none on a server: parts are only hidden), its `budget` and `collision_mask` |
+| A client showing the server's losses | `breakage.simulate = false`, then `apply_state(damage.to_dict(), velocities)` |
 
-Deliberately not here: prediction, input, pathfinding, a camera, damage beyond one health number, fuel/gearbox/audio, a shipped aircraft chassis, towing, 2D. [driving](docs/driving.md#deliberately-not-here)
+Deliberately not here: prediction, input, pathfinding, a camera, damage beyond parts and wheels (no deformation, no health per panel on the wire), fuel/gearbox/audio, a shipped aircraft chassis, towing, 2D. [driving](docs/driving.md#deliberately-not-here)

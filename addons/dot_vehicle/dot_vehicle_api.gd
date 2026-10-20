@@ -16,5 +16,9 @@ extends RefCounted
 #    DotVehicleCommand.brake_then_reverse() and STOPPED_BELOW (one key to brake and reverse,
 #    opt-in); DotVehicleTunables.handbrake_grip_fraction (1.0, no change, by default). OLDEST
 #    stays 1: a pack built before compiles and runs, with brakes that now mean their figures.
-const LEVEL := 2
+# 3: what comes off: DotVehicleDamage (parts and wheels as data, to_dict/apply_dict for the
+#    wire), DotVehicleBreakage (feels contact and landing hits, burst tyres and lost wheels
+#    that drag and pull, mass taken off with a load), DotVehicleDebris (budgeted loose pieces,
+#    carve() for a one-piece model); DotVehicleWheeled.wheels(), set_wheel_grip(), wheel_grip().
+const LEVEL := 3
 const OLDEST := 1
