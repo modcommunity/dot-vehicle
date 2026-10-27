@@ -29,8 +29,12 @@ var fuse: float = 5.0
 ## Shortest, so a single impact is not the whole show.
 var min_tumble: float = 1.2
 
-## A hit of this many m/s counts as an impact.
-var impact_dv: float = 3.0
+## A hit of this many m/s counts as an impact, and while tumbling the body feels a knock this
+## small (a slide down a slope is many small ones, not one big).
+var impact_dv: float = 0.6
+
+## Shortest time between two impacts that each take parts off, so a scrape is a sequence, not one step.
+var impact_gap: float = 0.3
 
 ## Each impact takes this many intact parts off, the nearest first.
 var parts_per_impact: int = 2
@@ -53,6 +57,8 @@ var draws: bool = true
 
 var impacts: int = 0
 var _time: float = 0.0
+var _since_impact: float = 0.0
+var _normal_threshold: float = 0.0
 var _smoke: CPUParticles3D = null
 var _fire: CPUParticles3D = null
 var _shown: float = -1.0
@@ -79,6 +85,9 @@ func crash(spin: Vector3 = Vector3.ZERO) -> void:
 	_time = 0.0
 	impacts = 0
 	breakage.hit_scale = hit_scale
+	_normal_threshold = breakage.hit_threshold
+	breakage.hit_threshold = minf(_normal_threshold, impact_dv)
+	_since_impact = impact_gap
 	var v := body.linear_velocity
 	var about := spin if spin != Vector3.ZERO else Vector3(v.z, 0.0, -v.x).normalized() * clampf(v.length() * 0.35, 2.0, 7.0)
 	body.angular_velocity += about
@@ -96,6 +105,8 @@ func reset() -> void:
 	_time = 0.0
 	if breakage != null:
 		breakage.hit_scale = 1.0
+		if _normal_threshold > 0.0:
+			breakage.hit_threshold = _normal_threshold
 	_shown = -1.0
 	_update_plumes(0.0)
 
@@ -106,9 +117,26 @@ func _physics_process(delta: float) -> void:
 
 	if phase == Phase.TUMBLING and breakage.simulate:
 		_time += delta
+		_since_impact += delta
+		_scrape()
 		var resting := impacts > 0 and body.linear_velocity.length() < rest_speed
 		if _time >= fuse or (_time >= min_tumble and resting):
 			explode()
+
+
+## A body dragged down a slope presses on it too gently for any one step to be a knock; every
+## [member impact_gap] seconds of touching it is one anyway, at the point it touches.
+func _scrape() -> void:
+	if _since_impact < impact_gap:
+		return
+
+	var state := PhysicsServer3D.body_get_direct_state(body.get_rid())
+
+	if state == null or state.get_contact_count() == 0:
+		return
+
+	var at := body.to_local(state.get_contact_local_position(0))
+	var _e := breakage.hit(at, maxf(impact_dv, 1.0) * 3.0)
 
 
 func _process(_delta: float) -> void:
@@ -128,6 +156,8 @@ func explode() -> void:
 
 	phase = Phase.BURNING
 	breakage.hit_scale = 1.0
+	if _normal_threshold > 0.0:
+		breakage.hit_threshold = _normal_threshold
 	var centre := body.global_position
 	var v := body.linear_velocity
 
@@ -146,9 +176,10 @@ func explode() -> void:
 
 
 func _on_impact(local_at: Vector3, dv: float) -> void:
-	if phase != Phase.TUMBLING or dv < impact_dv:
+	if phase != Phase.TUMBLING or dv < impact_dv or _since_impact < impact_gap:
 		return
 
+	_since_impact = 0.0
 	impacts += 1
 	var order: Array = []
 
