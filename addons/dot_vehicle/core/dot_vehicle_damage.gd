@@ -41,6 +41,21 @@ var hub_grip: float = 0.2
 ## A hub on the road drags: this fraction of the corner's load, against its motion. The pull.
 var hub_drag: float = 0.5
 
+## How much of a part's strength a hit below [member min_share] still wears off it (health
+## per strength): a long scrape along a rail does not take a mirror at once but it does not
+## leave it pristine either. 0 turns fatigue off.
+var fatigue: float = 0.04
+
+## An intact tyre's wear (0 new, 1 flat) from every knock it feels, as a fraction of the
+## knock over its tyre strength; a knock too small to count as a hit wears a tenth of that.
+var wear_rate: float = 0.5
+
+## The grip a fully worn (not yet burst) tyre has lost, as a fraction.
+var worn_grip_loss: float = 0.4
+
+## The thump a fully worn tyre puts into the body, as [member popped_wobble] does for a burst one.
+var worn_wobble: float = 0.2
+
 enum Wheel { INTACT, POPPED, LOST }
 
 
@@ -74,6 +89,8 @@ class WheelState:
 	var tyre_health: float = 1.0
 	var hub_health: float = 1.0
 	var state: int = Wheel.INTACT
+	## 0 new, 1 flat: grip goes and the wheel shakes before the tyre bursts.
+	var wear: float = 0.0
 
 
 ## id -> [Part], in the order they were added.
@@ -113,7 +130,8 @@ func add_wheel(centre: Vector3, tyre_strength: float, hub_strength: float, reach
 
 
 ## A knock of [param dv] m/s at [param at] (body frame). Returns what came of it, in order:
-## [code]{"kind": "part", "id": ...}[/code], [code]{"kind": "popped", "wheel": i}[/code],
+## [code]{"kind": "part", "id": ...}[/code], [code]{"kind": "worn", "wheel": i}[/code] (a
+## quarter more wear), [code]{"kind": "popped", "wheel": i}[/code],
 ## [code]{"kind": "lost", "wheel": i}[/code].
 func hit(at: Vector3, dv: float) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
@@ -130,6 +148,8 @@ func hit(at: Vector3, dv: float) -> Array[Dictionary]:
 		var felt := dv * _falloff(at.distance_to(part.centre), part.reach)
 
 		if felt < part.strength * min_share:
+			if fatigue > 0.0 and felt > 0.0:
+				part.health = maxf(part.health - felt / part.strength * fatigue, 0.05)
 			continue
 
 		part.health -= felt / part.strength
@@ -158,6 +178,14 @@ func hit_wheel(index: int, dv: float) -> Array[Dictionary]:
 	if w.state == Wheel.LOST:
 		return out
 
+	var worn_stage := false
+
+	if w.state == Wheel.INTACT and dv > 0.0:
+		var share := dv / w.tyre_strength
+		var before := int(w.wear * 4.0)
+		w.wear = minf(w.wear + share * wear_rate * (1.0 if dv >= w.tyre_strength * min_share else 0.1), 0.98)
+		worn_stage = int(w.wear * 4.0) > before
+
 	if w.state == Wheel.INTACT and dv >= w.tyre_strength * min_share:
 		w.tyre_health -= dv / w.tyre_strength
 
@@ -177,6 +205,9 @@ func hit_wheel(index: int, dv: float) -> Array[Dictionary]:
 				out.append({"kind": "popped", "wheel": index})
 			w.state = Wheel.LOST
 			out.append({"kind": "lost", "wheel": index})
+
+	if worn_stage and out.is_empty():
+		out.append({"kind": "worn", "wheel": index})
 
 	return out
 
@@ -222,6 +253,9 @@ func repair() -> void:
 		w.state = Wheel.INTACT
 		w.tyre_health = 1.0
 		w.hub_health = 1.0
+		w.wear = 0.0
+	for id: StringName in parts:
+		(parts[id] as Part).health = 1.0
 
 
 func wheel_state(index: int) -> int:
@@ -235,7 +269,31 @@ func grip_of(index: int) -> float:
 			return popped_grip
 		Wheel.LOST:
 			return hub_grip
-	return 1.0
+	return 1.0 - worn_grip_loss * wear_of(index)
+
+
+## Wheel [param index]'s wear, 0 new to 1 flat; a burst or lost wheel is fully worn.
+func wear_of(index: int) -> float:
+	if index < 0 or index >= wheels.size():
+		return 0.0
+	return 1.0 if wheels[index].state != Wheel.INTACT else wheels[index].wear
+
+
+## How broken the vehicle looks, 0 whole to 1 wrecked: parts lost or worn, tyres burst or
+## worn. What a smoke plume follows.
+func distress() -> float:
+	var total := 0.0
+	var count := 0
+	for id: StringName in parts:
+		var part: Part = parts[id]
+		if part.kind == &"cargo":
+			continue
+		total += 1.0 if part.lost else 1.0 - part.health
+		count += 1
+	for i in wheels.size():
+		total += wear_of(i)
+		count += 1
+	return total / float(count) if count > 0 else 0.0
 
 
 ## The kilograms gone with the parts that have come off.
@@ -265,7 +323,10 @@ func to_dict() -> Dictionary:
 	var ids: Array[String] = []
 	for id in lost_parts():
 		ids.append(String(id))
-	return {"lost": ids, "wheels": states}
+	var worn: Array[int] = []
+	for w in wheels:
+		worn.append(int(round(w.wear * 100.0)))
+	return {"lost": ids, "wheels": states, "wear": worn}
 
 
 ## Takes on what [method to_dict] said (a client, a joiner). Returns what is newly lost, as
@@ -297,6 +358,12 @@ func apply_dict(data: Dictionary) -> Array[Dictionary]:
 				out.append({"kind": "lost", "wheel": i})
 		w.state = to
 		w.tyre_health = 1.0 if to == Wheel.INTACT else 0.0
+		var worn: Array = data.get("wear", [])
+		if i < worn.size():
+			var was := w.wear
+			w.wear = clampf(float(worn[i]) / 100.0, 0.0, 1.0) if to == Wheel.INTACT else 0.0
+			if to == Wheel.INTACT and absf(w.wear - was) >= 0.05:
+				out.append({"kind": "worn", "wheel": i})
 		w.hub_health = 0.0 if to == Wheel.LOST else 1.0
 
 	return out

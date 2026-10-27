@@ -31,6 +31,10 @@ signal broke(event: Dictionary)
 ## rim or a hub throws sparks. Every physics step while it lasts.
 signal scraping(wheel: int, at: Vector3, speed: float)
 
+## A hit of [param dv] m/s at [param local_at] (body frame) was felt, whether or not it broke
+## anything: what a wreck counts its impacts by.
+signal impact(local_at: Vector3, dv: float)
+
 var damage: DotVehicleDamage = null
 var body: RigidBody3D = null
 
@@ -46,6 +50,10 @@ var simulate: bool = true
 ## Returns false while hits must not break anything (spawn protection, a practice lap). Unset,
 ## every hit counts. A callable rather than a flag so the game's own rule is asked each hit.
 var harm_gate: Callable = Callable()
+
+## Every hit is multiplied by this before the damage model sees it: a wreck tumbling down a
+## mountain sets it above 1 so each knock takes more off.
+var hit_scale: float = 1.0
 
 ## The change of speed (m/s) in one step below which nothing is a hit.
 var hit_threshold: float = 1.5
@@ -130,9 +138,17 @@ func hit(local_at: Vector3, dv: float) -> Array[Dictionary]:
 	last_hit_at = local_at
 	if harm_gate.is_valid() and not bool(harm_gate.call()):
 		return []
-	var events := damage.hit(local_at, dv)
-	_show(events, local_at, dv)
+	impact.emit(local_at, dv)
+	var scaled := dv * hit_scale
+	var events := damage.hit(local_at, scaled)
+	show_events(events, local_at, scaled)
 	return events
+
+
+## Makes [param events] (from [member damage]) physical: the pieces fly, the drive changes.
+## For a game that took a part off through the model itself.
+func show_events(events: Array[Dictionary], local_at: Vector3 = Vector3.ZERO, dv: float = 0.0) -> void:
+	_show(events, local_at, dv)
 
 
 ## A server's [method DotVehicleDamage.to_dict], shown. [param velocities] is part id or
@@ -214,8 +230,9 @@ func _drive_wheels(delta: float) -> void:
 
 	for i in _wheels.size():
 		var state := damage.wheel_state(i)
+		var worn := damage.wear_of(i)
 
-		if state == DotVehicleDamage.Wheel.INTACT:
+		if state == DotVehicleDamage.Wheel.INTACT and worn < 0.3:
 			continue
 
 		var wheel := _wheels[i]
@@ -225,6 +242,8 @@ func _drive_wheels(delta: float) -> void:
 		var speed := flat.length()
 
 		if not simulate:
+			if state == DotVehicleDamage.Wheel.INTACT:
+				continue
 			# A mirror is frozen and moved by snapshots: its speed is how far it went, and its
 			# wheels cast no rays, so the rim is taken to be on the road under the wheel.
 			var moved := (body.global_position - _mirror_last).length() / maxf(delta, 0.001)
@@ -233,6 +252,13 @@ func _drive_wheels(delta: float) -> void:
 			continue
 
 		if not wheel.is_in_contact():
+			continue
+
+		if state == DotVehicleDamage.Wheel.INTACT:
+			# A worn tyre only shakes the wheel, in step with its turn.
+			_phase[i] += speed / maxf(wheel.wheel_radius, 0.05) * delta
+			var shake := sin(_phase[i]) * damage.worn_wobble * worn * worn * corner_load
+			body.apply_force(Vector3.UP * shake, offset)
 			continue
 
 		var drag_share := damage.popped_drag if state == DotVehicleDamage.Wheel.POPPED else damage.hub_drag
@@ -260,7 +286,7 @@ func _show(events: Array[Dictionary], local_at: Vector3, dv: float) -> void:
 		match str(e.get("kind", "")):
 			"part":
 				_lose_part(e, local_at, dv)
-			"popped":
+			"popped", "worn":
 				_set_wheel(int(e["wheel"]), e)
 			"lost":
 				_set_wheel(int(e["wheel"]), e)
@@ -342,7 +368,7 @@ func _set_wheel(i: int, _e: Dictionary) -> void:
 			if not child.has_meta(&"dot_breakage_scale"):
 				child.set_meta(&"dot_breakage_scale", (child as Node3D).scale)
 			var base: Vector3 = child.get_meta(&"dot_breakage_scale")
-			(child as Node3D).scale = base * (damage.popped_radius if state == DotVehicleDamage.Wheel.POPPED else 1.0)
+			(child as Node3D).scale = base * (damage.popped_radius if state == DotVehicleDamage.Wheel.POPPED else 1.0 - 0.1 * damage.wear_of(i))
 
 
 func _throw_wheel(i: int, e: Dictionary, local_at: Vector3, dv: float) -> void:

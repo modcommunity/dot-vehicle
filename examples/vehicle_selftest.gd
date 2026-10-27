@@ -18,13 +18,13 @@ const SKIFF := "res://fixtures/skiff.tscn"
 const RIDER := "res://fixtures/rider.tscn"
 const CRATE := "res://fixtures/crate.tscn"
 
-const CHECKS := 192
+const CHECKS := 201
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 28
+const SECTIONS := 29
 
 var _passed := 0
 var _failed := 0
@@ -75,6 +75,7 @@ func _run() -> void:
 	_test_net_sync()
 	_test_damage_model()
 	await _test_breakage()
+	await _test_wreck()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -1563,11 +1564,13 @@ func _test_damage_model() -> void:
 	_check(not refused.ok, "a second part with the same id is refused")
 	var _w0 := d.add_wheel(Vector3(-0.9, 0.0, -1.4), 7.0, 12.0)
 
-	# A scrape is a hit under the floor: it wears nothing, however many there are.
+	# A scrape is a hit under the floor: it wears a part (fatigue) but never takes it off.
 	for i in 20:
 		var _s := d.hit(Vector3(0, 0.4, -2.0), 1.0)
-	_check(is_equal_approx((d.parts[&"bumper"] as DotVehicleDamage.Part).health, 1.0),
-		"twenty scrapes below a part's floor wear nothing off it")
+	var worn_health := (d.parts[&"bumper"] as DotVehicleDamage.Part).health
+	_check(worn_health < 0.95 and worn_health > 0.5 and not (d.parts[&"bumper"] as DotVehicleDamage.Part).lost,
+		"twenty scrapes below a part's floor wear it but do not take it off", "%.2f" % worn_health)
+	d.repair()
 
 	var first := d.hit(Vector3(0, 0.4, -2.0), 3.0)
 	var second := d.hit(Vector3(0, 0.4, -2.0), 3.0)
@@ -1713,6 +1716,69 @@ func _test_breakage() -> void:
 
 	whole.queue_free()
 	debris.queue_free()
+	spawner.queue_free()
+	ground.queue_free()
+	await get_tree().physics_frame
+	_done()
+
+
+## Tyre wear, fatigue, and a wreck: a crash that tears a vehicle apart and ends in an explosion.
+func _test_wreck() -> void:
+	_section("wear and wreck")
+
+	var d := DotVehicleDamage.new()
+	var _a := d.add_part(&"bumper", &"bumper", Vector3(0, 0.4, -2.0), 4.0, 1.0, 30.0)
+	var _w := d.add_wheel(Vector3(-0.9, 0.0, -1.4), 7.0, 12.0)
+	var grip_new := d.grip_of(0)
+	var worn_events := 0
+	for i in 25:
+		for e in d.hit_wheel(0, 2.0):
+			worn_events += 1 if e["kind"] == "worn" else 0
+	_check(d.wear_of(0) > 0.1 and d.grip_of(0) < grip_new and d.wheel_state(0) == DotVehicleDamage.Wheel.INTACT,
+		"small knocks wear a tyre: less grip, still not burst", "wear %.2f grip %.2f" % [d.wear_of(0), d.grip_of(0)])
+	_check(worn_events > 0, "and each quarter of wear is an event, so the drive can follow", str(worn_events))
+	var other := DotVehicleDamage.new()
+	var _b := other.add_part(&"bumper", &"bumper", Vector3(0, 0.4, -2.0), 4.0, 1.0, 30.0)
+	var _x := other.add_wheel(Vector3(-0.9, 0.0, -1.4), 7.0, 12.0)
+	var _shown := other.apply_dict(d.to_dict())
+	_check(absf(other.wear_of(0) - d.wear_of(0)) < 0.02, "wear crosses the wire to a mirror")
+	var before := d.distress()
+	var _l := d.lose_part(&"bumper")
+	_check(d.distress() > before and d.distress() <= 1.0, "distress rises with what is lost", "%.2f -> %.2f" % [before, d.distress()])
+
+	var spawner := _spawner()
+	var ground := _wall(Vector3(2100, -0.5, 0), Vector3(80, 1, 80))
+	var pair := _damaged_jeep(spawner, Vector3(2100, 6.0, 0))
+	var jeep: DotVehicleInstance = pair[0]
+	var breakage: DotVehicleBreakage = pair[1]
+	var wreck := DotVehicleWreck.new()
+	wreck.draws = false
+	wreck.fuse = 3.0
+	(jeep.node as Node).add_child(wreck)
+	var set_up := wreck.setup(jeep.node as RigidBody3D, breakage)
+	var blasts := [0]
+	wreck.exploded.connect(func(_at: Vector3, _v: Vector3) -> void: blasts[0] += 1)
+	(jeep.node as RigidBody3D).linear_velocity = Vector3(0, 0, -14)
+	wreck.crash()
+	var guard := 400
+	while guard > 0 and wreck.phase != DotVehicleWreck.Phase.BURNING:
+		await get_tree().physics_frame
+		guard -= 1
+	_check(set_up.ok and blasts[0] == 1 and wreck.is_wrecked(), "a crashed vehicle ends in one explosion", "%d blasts, %d frames left" % [blasts[0], guard])
+	_check(breakage.damage.lost_parts().size() == breakage.damage.parts.size(), "and everything is off it by then", str(breakage.damage.lost_parts()))
+	var all_lost := true
+	for i in breakage.damage.wheels.size():
+		all_lost = all_lost and breakage.damage.wheel_state(i) == DotVehicleDamage.Wheel.LOST
+	_check(all_lost, "wheels included")
+	wreck.reset()
+	breakage.repair()
+	_check(not wreck.is_wrecked() and breakage.hit_scale == 1.0, "a reset makes it whole again")
+
+	var boom := DotVehicleExplosion.spawn(_world, Vector3(2100, 2, 0), 1.0)
+	_check(boom != null and boom.get_child_count() >= 4, "an explosion is a fireball, smoke, sparks and a flash")
+	boom.queue_free()
+
+	spawner.remove(jeep.instance_id)
 	spawner.queue_free()
 	ground.queue_free()
 	await get_tree().physics_frame

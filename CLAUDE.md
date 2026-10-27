@@ -19,7 +19,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 | Path | What |
 | --- | --- |
 | `addons/dot_vehicle/core/` | `DotVehicleDef` (checkable without a scene), `DotVehicleCatalogue` (JSON an operator edits), `DotVehicleSeat`, `DotVehicleTunables` (a `DotConfig`), `DotVehicleCommand` (one tick of intent), `DotVehicleInstance`, `DotVehicleDamage` (what has come off, as data) |
-| `addons/dot_vehicle/runtime/` | `DotVehicleSpawner` (the node a game adds; owns the ride), `DotVehicleRide` (the handover), `DotVehicleChassis` (the subclass point), `DotVehicleWheeled`, `DotVehicleHover`, `DotVehicleDriver`, `DotVehicleBreakage` (hits, burst tyres, lost wheels, parts thrown), `DotVehicleDebris` (the budgeted loose pieces) |
+| `addons/dot_vehicle/runtime/` | `DotVehicleSpawner` (the node a game adds; owns the ride), `DotVehicleRide` (the handover), `DotVehicleChassis` (the subclass point), `DotVehicleWheeled`, `DotVehicleHover`, `DotVehicleDriver`, `DotVehicleBreakage` (hits, burst tyres, lost wheels, parts thrown), `DotVehicleDebris` (the budgeted loose pieces), `DotVehicleWreck` (a crash: tumble, parts torn off by every knock, an explosion event, smoke and fire that follow the damage), `DotVehicleExplosion` (the fireball, drawn) |
 | `addons/dot_vehicle/net/` | `DotVehicleNetSync`: what replicates, as strings; never names dot-net |
 | `fixtures/` | scenes and a chassis-by-path for the suite |
 | `examples/vehicle_selftest.tscn` | the suite; real bodies through real physics frames |
@@ -47,6 +47,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - A handbrake slide is `handbrake_grip_fraction` (1.0 = none); a threshold, not a slope, and it lengthens the handbrake's straight stop. [driving](docs/driving.md#brakes-are-forces-and-godot-wants-an-impulse)
 - `DotVehicleCommand`: forward is -Z, +1 steers right. Only `DotVehicleWheeled` translates to Godot's signs, and it divides engine force across traction wheels. [driving](docs/driving.md#two-measured-facts-about-godots-vehicle)
 - A new kind of vehicle is a `DotVehicleChassis` subclass named by `chassis_script_path`, never a fork. [driving](docs/driving.md#why-godots-raycast-vehicle-is-used-rather-than-replaced)
+- Wear is not loss: a knock below a part's floor wears its health (`fatigue`) and a tyre's (`wear_rate`: less grip, a wobble, then flat) but takes nothing off; `wear` and `distress()` cross the wire in `to_dict`. A wreck's explosion is a `broke` event of kind `wrecked`; the game draws `DotVehicleExplosion.spawn` and throws its driver out.
 - Debris never touches anything driven (`DotVehicleDebris.collision_mask` is the road): rigid bodies differ between machines, so each peer throws its own from the server's list and velocities. A hit is a change of speed at a point, never a force, so one strength table serves a van and a tipper. [driving](docs/driving.md#parts-that-come-off)
 - The bot driver steers in the vehicle's own basis, brakes for corners and on arrival, reverses out when stuck, and never paths; a person in the seat beats the autopilot. [driving](docs/driving.md#the-bot-driver)
 
