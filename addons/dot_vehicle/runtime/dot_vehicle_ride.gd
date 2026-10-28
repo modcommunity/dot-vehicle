@@ -338,7 +338,7 @@ func _exclusions(vehicle: DotVehicleInstance) -> Array[RID]:
 
 		var node := (record as Dictionary).get("node")
 
-		if node is CollisionObject3D and is_instance_valid(node):
+		if is_instance_valid(node) and node is CollisionObject3D:
 			out.append((node as CollisionObject3D).get_rid())
 
 	return out
@@ -356,20 +356,23 @@ func _eject(rider_id: StringName, at: Vector3) -> DotResult:
 	var record: Dictionary = found
 	_stowed.erase(rider_id)
 
-	var node := record.get("node") as Node3D
+	# Checked before the cast: casting a freed rider is itself an engine error.
+	var raw_node: Variant = record.get("node")
 
-	if node == null or not is_instance_valid(node):
+	if not is_instance_valid(raw_node):
 		return DotResult.success(at)
+
+	var node := raw_node as Node3D
 
 	var parent := node.get_parent()
 
 	if parent != null:
 		parent.remove_child(node)
 
-	var restore_to := record.get("parent") as Node
+	var raw_parent: Variant = record.get("parent")
 
-	if restore_to != null and is_instance_valid(restore_to):
-		restore_to.add_child(node)
+	if is_instance_valid(raw_parent):
+		(raw_parent as Node).add_child(node)
 	else:
 		# The world they came from is gone — a map change, or their spawn point being
 		# freed. Left in the vehicle's tree rather than orphaned, because an orphaned

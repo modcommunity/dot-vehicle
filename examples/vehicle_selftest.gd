@@ -18,13 +18,13 @@ const SKIFF := "res://fixtures/skiff.tscn"
 const RIDER := "res://fixtures/rider.tscn"
 const CRATE := "res://fixtures/crate.tscn"
 
-const CHECKS := 201
+const CHECKS := 205
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 29
+const SECTIONS := 30
 
 var _passed := 0
 var _failed := 0
@@ -71,6 +71,7 @@ func _run() -> void:
 	await _test_carrying_the_rider()
 	_test_destruction()
 	_test_disconnects()
+	_test_rider_freed_aboard()
 	await _test_no_leaked_nodes()
 	_test_net_sync()
 	_test_damage_model()
@@ -1834,3 +1835,39 @@ func _corner_drop(body: VehicleBody3D, wheel: VehicleWheel3D) -> float:
 			others += body.to_global(w.position).y - w.position.y
 			n += 1
 	return others / maxf(n, 1) - (body.to_global(wheel.position).y - wheel.position.y)
+
+
+## An engine error is the only symptom: the sweep and the eject carry on without the dead
+## rider, so a value assertion alone passes on the unguarded code.
+class ErrorCatcher extends Logger:
+	var errors: Array[String] = []
+
+	func _log_error(function: String, _file: String, _line: int, code: String,
+			rationale: String, _editor_notify: bool, _error_type: int,
+			_script_backtraces: Array) -> void:
+		errors.append("%s %s %s" % [code, rationale, function])
+
+
+func _test_rider_freed_aboard() -> void:
+	_section("a rider freed while seated")
+
+	var spawner := _spawner()
+	var jeep := spawner.spawn(&"jeep", Vector3(0, 1, 0))
+	var alice := _rider()
+	spawner.ride.enter(jeep, &"alice", alice)
+	spawner.ride.enter(jeep, &"bob", _rider())
+
+	alice.free()
+	var catcher := ErrorCatcher.new()
+	OS.add_logger(catcher)
+	var got_out := spawner.ride.exit(jeep, &"bob", true)
+	spawner.ride.exit(jeep, &"alice", true)
+	OS.remove_logger(catcher)
+
+	_check(got_out.ok, "the other rider still gets out")
+	_check(not spawner.ride.is_riding(&"bob"), "and is no longer riding")
+	_check(not spawner.ride.is_riding(&"alice"), "the dead rider's seat is released")
+	_check(catcher.errors.is_empty(), "and none of that raised an engine error", str(catcher.errors))
+
+	spawner.queue_free()
+	_done()
