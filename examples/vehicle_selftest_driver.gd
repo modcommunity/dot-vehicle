@@ -10,14 +10,8 @@ func _init(suite: Node) -> void:
 
 
 
-## A kinematic car with no physics in it at all.
-##
-## [b]Deliberately not a RigidBody.[/b] What is being tested is the decision — does the
-## driver turn the right way, slow for the corner, notice it is stuck — and a real
-## vehicle body answers that question through a suspension model, a friction model and
-## a solver, none of which is this addon's and all of which would decide whether the
-## check passed. This is a bicycle: throttle makes it go, steering turns it, and any
-## failure in the section below is the driver's.
+## A kinematic bicycle, deliberately not a RigidBody: a real body would let a suspension model
+## and a solver decide whether the check passed, so a failure here is the driver's.
 class ToyCar extends RefCounted:
 	var position := Vector3.ZERO
 	var yaw := 0.0
@@ -158,10 +152,8 @@ func test_driver_route() -> void:
 	driver.drive_from(Vector3(0, 0, -20), Vector3.FORWARD, Vector3.RIGHT, Vector3.ZERO, 0.05)
 	t._check(driver.index == 1, "arriving at one moves on to the next", "%d" % driver.index)
 
-	# Walked in order, deliberately. A driver handed a position beyond the next
-	# waypoint does not skip to the end: the route is the route, and a follower that
-	# jumped to whichever point was nearest would cut a hairpin by driving through the
-	# middle of it.
+	# Walked in order: a follower that jumped to the nearest waypoint would cut a hairpin
+	# by driving through the middle of it.
 	driver.drive_from(Vector3(0, 0, -59), Vector3.FORWARD, Vector3.RIGHT, Vector3.ZERO, 0.05)
 	t._check(
 		driver.index == 1,
@@ -243,11 +235,8 @@ func test_driver_stuck() -> void:
 		"steer = %.2f" % backing.steer
 	)
 
-	# And it gives up reversing rather than backing away for ever.
-	#
-	# Watched across the loop rather than checked at the end: a car that is still
-	# against the lamppost when it stops reversing is stuck again a moment later, so
-	# the end state is REVERSING and the thing being tested is that it ever left.
+	# It gives up reversing rather than backing away for ever. Watched across the loop: a car
+	# still against the lamppost is stuck again a moment later, so the end state proves nothing.
 	var went_forward_again := false
 
 	for i in 40:
@@ -347,8 +336,11 @@ func test_driver_drives_a_car() -> void:
 		"and driving a vehicle that is not there is an idle command, not a crash"
 	)
 
-	# The wiring, which is the half that is usually missing: a driver nothing calls is
-	# a driver that does not exist. An empty vehicle with an autopilot drives itself.
+	_check_autopilot()
+
+
+## The wiring, the half that is usually missing: an empty vehicle with an autopilot drives itself.
+func _check_autopilot() -> void:
 	var spawner: DotVehicleSpawner = t._spawner()
 	var vehicle := spawner.spawn(&"jeep", Vector3(0, 1, 0))
 	t._check(vehicle != null, "a vehicle spawns for the autopilot check")
