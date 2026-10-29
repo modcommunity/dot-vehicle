@@ -1,7 +1,6 @@
 # size
 # Baselines only shrink: scripts/<gate> --update lowers or drops entries and refuses to add.
 addons/dot_vehicle/runtime/dot_vehicle_spawner.gd	832
-examples/vehicle_selftest.gd	1770
+examples/vehicle_selftest.gd	1501
 examples/vehicle_selftest.gd::_test_brakes	93
 examples/vehicle_selftest.gd::_test_breakage	101
-examples/vehicle_selftest.gd::_test_driver_drives_a_car	93
