@@ -162,8 +162,7 @@ func explode() -> void:
 
 	body.apply_central_impulse(Vector3.UP * body.mass * blast * 0.5)
 	body.apply_torque_impulse(Vector3(0.6, 0.2, -0.8) * body.mass * blast * 0.25)
-	var event := {"kind": "wrecked", "at": centre, "velocity": v}
-	breakage.broke.emit(event)
+	breakage.broke.emit({"kind": "wrecked", "at": centre, "velocity": v})
 	exploded.emit(centre, v)
 	_update_plumes(1.0)
 
