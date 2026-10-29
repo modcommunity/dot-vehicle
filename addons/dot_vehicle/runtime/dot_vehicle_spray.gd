@@ -2,9 +2,8 @@ class_name DotVehicleSpray
 extends CPUParticles3D
 
 ## Water thrown up behind a vehicle's tyres on a wet road: a mist plume that grows with speed.
-## Add it as a child of the vehicle body, put it behind the rear axle ([member position]), set
-## [member wet] from the weather and call [method drive] with the speed each frame. Purely
-## visual, so it belongs on the client and on nothing the server simulates.
+## Child of the vehicle body behind the rear axle; set [member wet], call [method drive] each frame.
+## Purely visual, so client only.
 
 ## Speed below which nothing is thrown, m/s.
 const MIN_SPEED := 4.0

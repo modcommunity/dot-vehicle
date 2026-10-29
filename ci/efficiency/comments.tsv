@@ -3,7 +3,6 @@
 addons/dot_vehicle/core/dot_vehicle_catalogue.gd::history	1
 addons/dot_vehicle/core/dot_vehicle_catalogue.gd::long_block	4
 addons/dot_vehicle/core/dot_vehicle_command.gd::long_block	4
-addons/dot_vehicle/core/dot_vehicle_damage.gd::long_block	1
 addons/dot_vehicle/core/dot_vehicle_def.gd::long_block	5
 addons/dot_vehicle/core/dot_vehicle_instance.gd::long_block	7
 addons/dot_vehicle/core/dot_vehicle_seat.gd::long_block	6

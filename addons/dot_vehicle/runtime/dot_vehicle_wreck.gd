@@ -1,16 +1,9 @@
 class_name DotVehicleWreck
 extends Node
 
-## Takes a vehicle through a crash: it tumbles, every knock tears more off it, and at the end it
-## explodes (the fireball is [DotVehicleExplosion], the game draws it from the "wrecked" event).
-## Also the smoke and fire that follow how broken a vehicle looks, hurt or not. A child of the
-## body, beside its [DotVehicleBreakage].
-##
-## [b]Who decides.[/b] The simulating side (offline, or the server) calls [method crash] and the
-## explosion follows by itself, on the first rest after an impact or after [member fuse]
-## seconds, whichever is first (a server has no mountain to hit, so the fuse ends its fall).
-## It reaches a client as [DotVehicleBreakage.broke] events and the damage state, like any loss;
-## the client's wreck only draws smoke from that state.
+## Takes a vehicle through a crash: it tumbles, every knock tears more off, and it explodes ([DotVehicleExplosion]) on the first rest after an impact or after [member fuse] seconds.
+## Also the smoke and fire that follow how broken a vehicle looks. Child of the body, beside its [DotVehicleBreakage].
+## The simulating side calls [method crash]; a client only draws smoke from the replicated damage state.
 
 const CHANNEL := "vehicle.wreck"
 

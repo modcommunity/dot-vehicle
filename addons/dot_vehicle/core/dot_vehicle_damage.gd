@@ -1,20 +1,9 @@
 class_name DotVehicleDamage
 extends RefCounted
 
-## What a vehicle has lost: parts that come off and wheels whose tyre has burst or that have
-## come away, as data. No node, no physics, no randomness.
-##
-## [b]A hit is a change of speed at a point[/b] (metres a second, in the body's own frame),
-## never a force or an impulse: a bumper that stands a 4 m/s knock stands it on a van and on a
-## loaded tipper, which is what lets one table of strengths serve every vehicle in a game. The
-## part nearest the point takes the most of it ([member Part.reach] is how far a hit is felt),
-## and a hit below [member min_share] of a part's strength is ignored, so a long scrape along a
-## rail wears nothing off while one hard swipe takes the mirror.
-##
-## [b]Deterministic on purpose.[/b] The same hits in the same order break the same parts on any
-## machine, and [method to_dict] / [method apply_dict] carry the result, so the server decides and
-## a client only shows: what is lost replicates as a list of ids and a state per wheel, never as
-## bodies. [DotVehicleBreakage] is the node that feeds it hits and makes the losses physical.
+## What a vehicle has lost: parts that come off and wheels whose tyre has burst, as data. No node, no physics, no randomness.
+## A hit is a change of speed (m/s) at a point, never a force, so one strengths table serves every vehicle; the nearest part takes most of it and hits below [member min_share] are ignored.
+## Deterministic so the server decides and a client only shows; [DotVehicleBreakage] feeds it hits and makes the losses physical.
 
 ## How much of its strength a hit must reach before a part notices it at all.
 var min_share: float = 0.3
@@ -130,9 +119,7 @@ func add_wheel(centre: Vector3, tyre_strength: float, hub_strength: float, reach
 
 
 ## A knock of [param dv] m/s at [param at] (body frame). Returns what came of it, in order:
-## [code]{"kind": "part", "id": ...}[/code], [code]{"kind": "worn", "wheel": i}[/code] (a
-## quarter more wear), [code]{"kind": "popped", "wheel": i}[/code],
-## [code]{"kind": "lost", "wheel": i}[/code].
+## dicts with kind "part" (id), "worn", "popped" or "lost" (wheel index).
 func hit(at: Vector3, dv: float) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 
