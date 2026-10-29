@@ -118,6 +118,8 @@ func setup(p_body: RigidBody3D, p_damage: DotVehicleDamage, p_chassis: DotVehicl
 			var node := body.get_node_or_null(part.node) as Node3D
 			if node != null:
 				_parts[id] = node
+			else:
+				DotLog.warn(CHANNEL, "part node not found; it will not be hidden or thrown", {"part": str(id), "path": str(part.node)})
 
 	if simulate:
 		body.contact_monitor = true

@@ -13,8 +13,6 @@ extends Node3D
 ## off. Each machine throws its own from the server's list of what was lost
 ## ([method DotVehicleDamage.to_dict]) and the velocity the server sent with it.
 
-const CHANNEL := "vehicle.debris"
-
 ## How many pieces may lie about at once, every vehicle together.
 @export_range(1, 512, 1) var budget: int = 32
 
