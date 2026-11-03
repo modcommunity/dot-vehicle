@@ -8,6 +8,10 @@ extends RefCounted
 ## How much of its strength a hit must reach before a part notices it at all.
 var min_share: float = 0.3
 
+## How much a part's reach grows per m/s of the hit: a wall at speed crushes the whole nose,
+## though the contacts average to one point on a tall face. 0 keeps every reach fixed.
+var reach_growth: float = 0.04
+
 ## A burst tyre's grip, as a fraction of the intact one's.
 var popped_grip: float = 0.45
 
@@ -126,13 +130,15 @@ func hit(at: Vector3, dv: float) -> Array[Dictionary]:
 	if dv <= 0.0:
 		return out
 
+	var widen := 1.0 + dv * reach_growth
+
 	for id: StringName in parts:
 		var part: Part = parts[id]
 
 		if part.lost:
 			continue
 
-		var felt := dv * _falloff(at.distance_to(part.centre), part.reach)
+		var felt := dv * _falloff(at.distance_to(part.centre), part.reach * widen)
 
 		if felt < part.strength * min_share:
 			if fatigue > 0.0 and felt > 0.0:
@@ -147,7 +153,7 @@ func hit(at: Vector3, dv: float) -> Array[Dictionary]:
 			out.append({"kind": "part", "id": id})
 
 	for i in wheels.size():
-		var felt := dv * _falloff(at.distance_to(wheels[i].centre), wheels[i].reach)
+		var felt := dv * _falloff(at.distance_to(wheels[i].centre), wheels[i].reach * widen)
 		out.append_array(hit_wheel(i, felt))
 
 	return out

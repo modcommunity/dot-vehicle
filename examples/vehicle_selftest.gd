@@ -20,7 +20,7 @@ const CRATE := "res://fixtures/crate.tscn"
 
 const DriverTests := preload("vehicle_selftest_driver.gd")
 
-const CHECKS := 205
+const CHECKS := 207
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -1312,6 +1312,26 @@ func _test_breakage() -> void:
 		guard -= 1
 	_check(breakage.damage.lost_parts() == [&"bumper"], "driven into a wall, the contact takes the bumper off and leaves the tailgate",
 		"hit %.1f m/s at %s, lost %s" % [breakage.last_hit, breakage.last_hit_at, breakage.damage.lost_parts()])
+	spawner.remove(jeep.instance_id)
+	wall.queue_free()
+
+	# A hard stop in one step (Jolt reports no impulse for it): the nose is where it hit.
+	pair = _damaged_jeep(spawner, Vector3(2015, 1.0, 0), debris)
+	jeep = pair[0]
+	breakage = pair[1]
+	wall = _wall(Vector3(2015, 1.0, -30.0), Vector3(8, 3, 1))
+	var thrown_before := debris.live_count()
+	(jeep.node as RigidBody3D).continuous_cd = true
+	(jeep.node as RigidBody3D).mass = 6000.0
+	(jeep.node as RigidBody3D).linear_velocity = Vector3(0, 0, -26.0)
+	guard = 240
+	while guard > 0 and breakage.last_hit < 8.0:
+		await get_tree().physics_frame
+		guard -= 1
+	_check(breakage.last_hit >= 10.0 and breakage.last_hit_at.z < -0.5, "a 26 m/s strike is felt in full, at the nose and not the tail",
+		"%.1f m/s at %s" % [breakage.last_hit, breakage.last_hit_at])
+	_check(breakage.damage.lost_parts().has(&"bumper") and not breakage.damage.lost_parts().has(&"tailgate") and debris.live_count() > thrown_before,
+		"and it sheds the front part as loose debris", "lost %s, %d pieces" % [breakage.damage.lost_parts(), debris.live_count()])
 	spawner.remove(jeep.instance_id)
 	wall.queue_free()
 

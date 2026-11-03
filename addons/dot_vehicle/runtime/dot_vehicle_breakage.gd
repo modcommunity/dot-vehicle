@@ -82,6 +82,7 @@ var _was_in_contact: Array[bool] = []
 var _last_point_v: Array[Vector3] = []
 var _parts: Dictionary = {}
 var _start_mass: float = 0.0
+var _prev_v: Vector3 = Vector3.ZERO
 var _mirror_last: Vector3 = Vector3.ZERO
 
 
@@ -193,22 +194,42 @@ func _feel() -> void:
 	if state == null:
 		return
 
+	# Jolt reports a zero impulse on the step a hard stop happens, so the change of speed is
+	# read off the velocity itself and the impulse is kept for the contacts that do report it.
+	var lost_v := _prev_v - body.linear_velocity + state.total_gravity * state.step
 	var total := Vector3.ZERO
 	var at := Vector3.ZERO
 	var weight := 0.0
+	var faced := 0.0
+	var faced_at := Vector3.ZERO
+	var count := state.get_contact_count()
 
-	for i in state.get_contact_count():
+	for i in count:
 		var impulse := state.get_contact_impulse(i)
 		var size := impulse.length()
 		total += impulse
 		at += state.get_contact_local_position(i) * size
 		weight += size
 
-	if weight > 0.0:
-		var dv := total.length() / maxf(body.mass, 1.0)
-		if dv >= hit_threshold:
-			# get_contact_local_position is in world space, despite its name (Godot 4).
-			var _e := hit(body.to_local(at / weight), dv)
+		# A contact facing the lost velocity is where the body was stopped.
+		var face := absf(state.get_contact_local_normal(i).dot(lost_v.normalized())) + 0.01
+		faced += face
+		faced_at += state.get_contact_local_position(i) * face
+
+	_prev_v = body.linear_velocity
+
+	var dv := total.length() / maxf(body.mass, 1.0)
+	var where := at / weight if weight > 0.0 else Vector3.ZERO
+
+	if count > 0 and lost_v.length() > dv:
+		dv = lost_v.length()
+		if faced > 0.0:
+			where = faced_at / faced
+			weight = faced
+
+	if weight > 0.0 and dv >= hit_threshold:
+		# get_contact_local_position is in world space, despite its name (Godot 4).
+		var _e := hit(body.to_local(where), dv)
 
 	for i in _wheels.size():
 		var wheel := _wheels[i]
