@@ -140,6 +140,8 @@ func tick(delta: float) -> void:
 		return
 
 	_now += delta
+	_stepping = true
+	_run_deferred()
 
 	# A copy, because a chassis may destroy its own vehicle — running out of fuel, or
 	# an explosion — and removing from the dictionary being iterated skips every other
@@ -170,6 +172,8 @@ func tick(delta: float) -> void:
 
 		(vehicle.chassis as DotVehicleChassis).drive(command, delta)
 
+	_stepping = false
+
 
 ## Hands a vehicle the driver's latest input.
 ##
@@ -196,6 +200,14 @@ func set_command(
 		# placement sweep are this addon's and a game that had to remember to check
 		# `exit_requested` is a game where one code path forgets.
 		command.exit_requested = false
+
+		# The placement sweep is a space query, which may only run in the physics step;
+		# a request arrives between ticks, so it waits for the next one. The refusal, if
+		# any, comes from the ride's `refused` signal as it always did.
+		if not _stepping:
+			_deferred.append({"kind": &"exit", "id": instance_id, "rider": rider_id})
+			return DotResult.success(null)
+
 		return ride.exit(vehicle, rider_id)
 
 	return DotResult.success(null)
@@ -503,12 +515,26 @@ func damage(instance_id: int, amount: float, by: StringName = &"") -> float:
 
 
 ## Destroys a vehicle, putting everybody in it on the ground first.
+##
+## With riders aboard and outside the physics step the work waits for the next tick (the
+## evacuation sweeps the space); the return value still says it will happen.
 func destroy(instance_id: int, by: StringName = &"") -> bool:
 	var vehicle := get_vehicle(instance_id)
 
 	if vehicle == null or not vehicle.alive:
 		return false
 
+	if not _stepping and not vehicle.is_empty():
+		if _is_queued(&"destroy", instance_id):
+			return true
+
+		_deferred.append({"kind": &"destroy", "id": instance_id, "by": by})
+		return true
+
+	return _destroy_now(vehicle, instance_id, by)
+
+
+func _destroy_now(vehicle: DotVehicleInstance, instance_id: int, by: StringName) -> bool:
 	vehicle.health = 0.0
 	destroy_count += 1
 
@@ -532,6 +558,48 @@ func _evacuate(vehicle: DotVehicleInstance) -> void:
 		ride.exit(vehicle, StringName(rider), true)
 
 
+# --- Deferred to the physics step -----------------------------------------------
+
+## True while [method tick] runs, which is the only time the exit sweep may query the space.
+var _stepping := false
+
+## Exits, destructions and removals that arrived between ticks, in arrival order.
+var _deferred: Array[Dictionary] = []
+
+
+## How many requests wait for the next tick.
+func pending_count() -> int:
+	return _deferred.size()
+
+
+func _is_queued(kind: StringName, instance_id: int) -> bool:
+	for entry in _deferred:
+		if entry["kind"] == kind and entry["id"] == instance_id:
+			return true
+
+	return false
+
+
+func _run_deferred() -> void:
+	var work := _deferred
+	_deferred = []
+
+	for entry in work:
+		var instance_id: int = entry["id"]
+		var vehicle := get_vehicle(instance_id)
+
+		if vehicle == null or not vehicle.is_alive():
+			continue
+
+		match entry["kind"]:
+			&"exit":
+				var _res := ride.exit(vehicle, StringName(entry["rider"]))
+			&"destroy":
+				var _done := _destroy_now(vehicle, instance_id, StringName(entry["by"]))
+			&"remove":
+				var _gone := _remove_now(vehicle, instance_id, StringName(entry["reason"]))
+
+
 # --- Removing -----------------------------------------------------------------
 
 func remove(instance_id: int, reason: StringName = REASON_ADMIN) -> bool:
@@ -544,6 +612,17 @@ func remove(instance_id: int, reason: StringName = REASON_ADMIN) -> bool:
 		return false
 
 	var vehicle: DotVehicleInstance = found
+
+	if not _stepping and not vehicle.is_empty():
+		if not _is_queued(&"remove", instance_id):
+			_deferred.append({"kind": &"remove", "id": instance_id, "reason": reason})
+
+		return true
+
+	return _remove_now(vehicle, instance_id, reason)
+
+
+func _remove_now(vehicle: DotVehicleInstance, instance_id: int, reason: StringName) -> bool:
 
 	if not vehicle.is_empty():
 		_evacuate(vehicle)

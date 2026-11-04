@@ -8,6 +8,8 @@ Suspension has prior art everywhere and a raycast vehicle ships inside Godot. Wh
 
 The exclusions on that sweep are the subtle half: the vehicle **and everybody in it**. A second passenger sitting where the first is about to stand would block their exit, which is a two-seater nobody can get out of, and it only happens with two people in it. `DotVehicleInstance.occupants` maps **seat id to rider id**; iterating the dictionary walks its keys, so `for rider_id in vehicle.occupants` walks seat ids and excludes nobody. Iterate the values.
 
+**The sweep runs in the physics step only.** With physics on its own thread a space query outside the step reads every exit as free. So an exit request through `set_command`, and a `destroy` or `remove` of an occupied vehicle, are queued and performed at the start of the next `DotVehicleSpawner.tick` (`pending_count()` says how many wait); the call answers success or `true` at once and a refusal still arrives on the ride's `refused` signal. An empty vehicle is removed at once. Calling `ride.exit` or `find_exit_position` directly is the game's own step to place.
+
 `max_exit_speed` refuses an exit from a moving vehicle (a leap takes fall damage the game has not written, or lands inside the geometry the vehicle was about to occupy). `allow_exit_when_inverted` **overrides the speed rule rather than adding to it**: the one state a player cannot drive out of must always be one they can leave.
 
 ## One ride, and it is the spawner's

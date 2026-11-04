@@ -20,13 +20,13 @@ const CRATE := "res://fixtures/crate.tscn"
 
 const DriverTests := preload("vehicle_selftest_driver.gd")
 
-const CHECKS := 211
+const CHECKS := 221
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 31
+const SECTIONS := 32
 
 var _passed := 0
 var _failed := 0
@@ -80,6 +80,7 @@ func _run() -> void:
 	_test_damage_model()
 	await _test_breakage()
 	await _test_wreck()
+	await _test_deferred_queries()
 	_test_space_query_audit()
 
 	print("")
@@ -1017,6 +1018,9 @@ func _test_destruction() -> void:
 		wrecked.append(by))
 
 	spawner.damage(wreckable.instance_id, 500.0, &"alice")
+	_check(wreckable.is_alive() and spawner.pending_count() == 1,
+		"an overkill with riders aboard waits for the physics step")
+	spawner.tick(1.0 / 60.0)
 
 	_check(wrecked.size() == 1, "an overkill destroys it")
 	_check(not wreckable.is_alive(), "and it is gone")
@@ -1536,6 +1540,59 @@ func _audit_scripts(dir: String, out: Array[String]) -> void:
 			out.append(dir.path_join(f))
 	for d in DirAccess.get_directories_at(dir):
 		_audit_scripts(dir.path_join(d), out)
+
+
+func _test_deferred_queries() -> void:
+	_section("space queries wait for the physics step")
+
+	var spawner := _spawner()
+	_wall(Vector3(0, -0.5, 0), Vector3(200, 1, 200))
+	var jeep := spawner.spawn(&"jeep", Vector3(0, 0.5, 0))
+	var rider := _rider()
+	spawner.ride.enter(jeep, &"alice", rider)
+	await get_tree().physics_frame
+
+	var cmd := DotVehicleCommand.make(0.0)
+	cmd.exit_requested = true
+	var reply := spawner.set_command(jeep.instance_id, &"alice", cmd)
+	_check(reply.ok, "an exit request is accepted between ticks")
+	_check(spawner.ride.is_riding(&"alice") and spawner.pending_count() == 1,
+		"but nobody has moved and the sweep has not run")
+	spawner.tick(1.0 / 60.0)
+	_check(not spawner.ride.is_riding(&"alice") and spawner.pending_count() == 0,
+		"the next tick puts them down")
+
+	var refusals: Array[String] = []
+	spawner.ride.refused.connect(func(_r: StringName, _v: StringName, why: String) -> void:
+		refusals.append(why))
+	var boxed := spawner.spawn(&"jeep", Vector3(50, 0.5, 0))
+	var boxed_rider := _rider()
+	spawner.ride.enter(boxed, &"bob", boxed_rider)
+	await get_tree().physics_frame
+	var _roof := _wall(Vector3(50, 1.0, 0), Vector3(14, 3, 14))
+	await get_tree().physics_frame
+	var blocked := DotVehicleCommand.make(0.0)
+	blocked.exit_requested = true
+	spawner.set_command(boxed.instance_id, &"bob", blocked)
+	_check(refusals.is_empty(), "a refusal is not reported before the tick")
+	spawner.tick(1.0 / 60.0)
+	_check(spawner.ride.is_riding(&"bob") and refusals.size() == 1,
+		"the tick reports the refusal through the same signal")
+
+	var second := spawner.spawn(&"jeep", Vector3(-50, 0.5, 0))
+	spawner.ride.enter(second, &"carol", _rider())
+	_check(spawner.remove(second.instance_id), "removing an occupied vehicle is accepted")
+	_check(second.is_alive() and spawner.pending_count() == 1, "and waits for the tick")
+	spawner.tick(1.0 / 60.0)
+	_check(not second.is_alive() and not spawner.ride.is_riding(&"carol"),
+		"the tick evacuates and removes it")
+
+	var empty := spawner.spawn(&"jeep", Vector3(-80, 0.5, 0))
+	_check(spawner.remove(empty.instance_id) and not empty.is_alive() and spawner.pending_count() == 0,
+		"an empty vehicle needs no sweep, so it goes at once")
+
+	spawner.queue_free()
+	_done()
 
 
 func _test_space_query_audit() -> void:
