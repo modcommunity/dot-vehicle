@@ -20,13 +20,13 @@ const CRATE := "res://fixtures/crate.tscn"
 
 const DriverTests := preload("vehicle_selftest_driver.gd")
 
-const CHECKS := 207
+const CHECKS := 211
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 30
+const SECTIONS := 31
 
 var _passed := 0
 var _failed := 0
@@ -80,6 +80,7 @@ func _run() -> void:
 	_test_damage_model()
 	await _test_breakage()
 	await _test_wreck()
+	_test_space_query_audit()
 
 	print("")
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -1518,4 +1519,51 @@ func _test_rider_freed_aboard() -> void:
 	_check(catcher.errors.is_empty(), "and none of that raised an engine error", str(catcher.errors))
 
 	spawner.queue_free()
+	_done()
+
+
+## Every file that asks the physics space a question. A new one fails here until it is added and
+## listed in dot-physics docs/threading.md, because with physics on its own thread each caller
+## must run inside the physics step.
+const QUERY_FILES: Array[String] = ["runtime/dot_vehicle_hover.gd", "runtime/dot_vehicle_ride.gd"]
+const QUERY_NEEDLES: Array[String] = ["direct_space_state", "space.intersect_", "space.cast_motion(", "space.get_rest_info("]
+const TICK_ENTRY_NEEDLES: Array[String] = ["func _process(", "func _input(", "func _unhandled_input(", "call_deferred(", "await "]
+
+
+func _audit_scripts(dir: String, out: Array[String]) -> void:
+	for f in DirAccess.get_files_at(dir):
+		if f.ends_with(".gd"):
+			out.append(dir.path_join(f))
+	for d in DirAccess.get_directories_at(dir):
+		_audit_scripts(dir.path_join(d), out)
+
+
+func _test_space_query_audit() -> void:
+	_section("space-query audit")
+	var scripts: Array[String] = []
+	_audit_scripts("res://addons/dot_vehicle", scripts)
+	var found: Array[String] = []
+	var in_tick_entry: Array[String] = []
+
+	for path in scripts:
+		var text := FileAccess.get_file_as_string(path)
+		var queries := false
+		for n in QUERY_NEEDLES:
+			if text.contains(n):
+				queries = true
+		if not queries:
+			continue
+		var rel := path.trim_prefix("res://addons/dot_vehicle/")
+		found.append(rel)
+		for n in TICK_ENTRY_NEEDLES:
+			if text.contains(n):
+				in_tick_entry.append("%s: %s" % [rel, n])
+
+	found.sort()
+	var expected := QUERY_FILES.duplicate()
+	expected.sort()
+	_check(scripts.size() > 5, "the audit found the addon's scripts")
+	_check(found == expected, "the files that query the space are exactly the documented ones", str(found))
+	_check(in_tick_entry.is_empty(), "no querying file has a frame, input, deferred or awaited entry point", str(in_tick_entry))
+	_check(FileAccess.get_file_as_string("res://addons/dot_vehicle/runtime/dot_vehicle_spawner.gd").contains("func _process(") == false, "the spawner that drives and exits vehicles has no frame callback")
 	_done()
