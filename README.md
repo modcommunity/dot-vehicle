@@ -105,7 +105,7 @@ godot --headless --path . --import
 timeout 180 godot --headless --path . res://examples/vehicle_selftest.tscn
 ```
 
-207 checks in 30 sections, exits non-zero on failure.
+`vehicle_selftest` exits non-zero on failure.
 
 ## Licence
 
