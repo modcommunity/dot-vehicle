@@ -128,8 +128,6 @@ func _ready() -> void:
 		DotLog.warn(CHANNEL, "the vehicle spawner has no catalogue", {})
 
 
-# --- The tick -----------------------------------------------------------------
-
 ## One simulated tick: every vehicle applies the command it is holding.
 ##
 ## Called by the game's simulation at the game's fixed rate, exactly as dot-npc's
@@ -212,8 +210,6 @@ func set_command(
 
 	return DotResult.success(null)
 
-
-# --- Spawning -----------------------------------------------------------------
 
 ## Spawns one vehicle. Null on refusal, with [signal refused] emitted.
 func spawn(
@@ -337,10 +333,8 @@ func adopt(
 		_refuse(owner_id, vehicle_id, allowed.error.message)
 		return null
 
-	# Refused rather than registered twice. A second instance over one node gives two
-	# chassis writing engine force onto the same rigid body every tick, which reads as a
-	# car with twice the power its tunables say and is the sort of thing that gets
-	# reported as "the handling feels off".
+	# Refused rather than registered twice: two chassis would write engine force onto one
+	# rigid body every tick, a car with twice the power its tunables say.
 	if _vehicles.has(body.get_instance_id()):
 		_refuse(owner_id, vehicle_id, "That body is already a vehicle.")
 		return null
@@ -348,10 +342,8 @@ func adopt(
 	var vehicle := _register(body, def, owner_id)
 
 	if vehicle != null:
-		# Recorded so [method remove] does not free a node this spawner did not create.
-		# The host that made it owns its lifetime — in playground's case dot-props, which
-		# frees it from its own undo stack — and freeing it from both ends is how a
-		# listener holding the instance finds a node that is already gone.
+		# Recorded so [method remove] does not free a node this spawner did not create: the
+		# host owns its lifetime, and freeing from both ends leaves listeners a dead node.
 		vehicle.meta[META_ADOPTED] = true
 
 	return vehicle
@@ -427,10 +419,8 @@ func may_spawn(def: DotVehicleDef, owner_id: StringName = &"") -> DotResult:
 	return DotResult.success(null)
 
 
-## Builds and binds the chassis a definition asks for.
-##
-## Loaded by path when the definition names one, for the reason in [DotVehicleChassis]:
-## a `class_name` cannot be resolved inside a mounted pack.
+## Builds and binds the chassis a definition asks for, loaded by path when it names one (a
+## `class_name` cannot be resolved inside a mounted pack, see [DotVehicleChassis]).
 func attach_chassis(vehicle: DotVehicleInstance) -> DotResult:
 	if vehicle == null or vehicle.def == null:
 		return DotResult.fail(DotError.CODE_INVALID, "No vehicle to build a chassis for.")
@@ -489,8 +479,6 @@ func _refuse(owner_id: StringName, vehicle_id: StringName, reason: String) -> vo
 	refusal_count += 1
 	refused.emit(owner_id, vehicle_id, reason)
 
-
-# --- Damage -------------------------------------------------------------------
 
 ## Hurts a vehicle. Returns how much health it actually lost.
 ##
@@ -558,8 +546,6 @@ func _evacuate(vehicle: DotVehicleInstance) -> void:
 		ride.exit(vehicle, StringName(rider), true)
 
 
-# --- Deferred to the physics step -----------------------------------------------
-
 ## True while [method tick] runs, which is the only time the exit sweep may query the space.
 var _stepping := false
 
@@ -599,8 +585,6 @@ func _run_deferred() -> void:
 			&"remove":
 				var _gone := _remove_now(vehicle, instance_id, StringName(entry["reason"]))
 
-
-# --- Removing -----------------------------------------------------------------
 
 func remove(instance_id: int, reason: StringName = REASON_ADMIN) -> bool:
 	if not authoritative:
@@ -738,8 +722,6 @@ func owner_left(owner_id: StringName) -> int:
 
 	return clear_owner(owner_id, REASON_LEFT)
 
-
-# --- Queries ------------------------------------------------------------------
 
 func get_vehicle(instance_id: int) -> DotVehicleInstance:
 	var found: Variant = _vehicles.get(instance_id)
