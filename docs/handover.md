@@ -39,7 +39,7 @@ Clearing one end reads exactly like the fix and is half of it. And the path that
 
 ## `adopt()`, the second entry point
 
-game-playground's first car could not use `spawn`: everything in that world is a `DotPropInstance` (on a prop budget, on an undo stack, pickup-able by a physics gun), and its prop spawner has already loaded the scene and placed the body by the time anything knows the definition. `adopt(body, id, owner)` is everything after the instantiate: the entitlement, the budget, the cooldown, the instance row, the chassis and the announcement. `spawn` is written in terms of it, so the two cannot drift.
+game-playlot's first car could not use `spawn`: everything in that world is a `DotPropInstance` (on a prop budget, on an undo stack, pickup-able by a physics gun), and its prop spawner has already loaded the scene and placed the body by the time anything knows the definition. `adopt(body, id, owner)` is everything after the instantiate: the entitlement, the budget, the cooldown, the instance row, the chassis and the announcement. `spawn` is written in terms of it, so the two cannot drift.
 
 - **It does not place or reparent the node.** Whoever created it has already decided where it goes.
 - **It refuses a body that is already a vehicle.** Two instances over one node is two chassis writing engine force onto one rigid body: a car with twice the power its tunables say.

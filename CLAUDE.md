@@ -29,7 +29,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - Link `addons/dot_core` once ([development setup](../../docs/development-setup.md)), then the family's two steps ([family CLAUDE.md](../../CLAUDE.md#validating-anything)) and `timeout 180 godot --headless --path . res://examples/vehicle_selftest.tscn`. Exits non-zero on failure.
 - Assert a direction, never only that something moved: a car that drives backwards travels as far as one that does not. [driving](docs/driving.md#two-measured-facts-about-godots-vehicle)
 - Tests that build colliders need their own patch of world and a frame between them (`queue_free` is deferred). [history](docs/history.md)
-- Consumers: game-playground (adopted cars), mg-buses-from-hell (the buses), mg-smash-copter (a game chassis), mg-dangerous-delivery (a truck bound without the seat handover, its own `DdDrivetrain`). mg-wipeout links the addon and drives nothing. Run the ones a change touches.
+- Consumers: game-playlot (adopted cars), mg-buses-from-hell (the buses), mg-smash-copter (a game chassis), mg-dangerous-delivery (a truck bound without the seat handover, its own `DdDrivetrain`). mg-wipeout links the addon and drives nothing. Run the ones a change touches.
 
 ## Rules that bite
 

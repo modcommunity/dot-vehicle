@@ -36,7 +36,7 @@ The raycast vehicle does not lock a wheel: a handbrake slows the rear and never 
 
 `DotVehicleCommand.brake_then_reverse(forward_speed)` turns a negative throttle into the foot brake while the vehicle still rolls forward faster than `STOPPED_BELOW` (0.8 m/s), and into reverse once it has nearly stopped; a positive throttle while rolling backwards brakes the same way. That is how a driving game's S key works, and reverse thrust is not a substitute: it is `reverse_fraction` of the engine, a fraction of the brake, so a bus on S took 21 m from 15 m/s against the brake's 7.6.
 
-**Opt-in, called by the game where it maps keys to a command, never by the chassis.** A bot's three-point turn asks for reverse while still rolling forward and means it; a chassis that rewrote every negative throttle would change every autopilot in the family. The speed is the vehicle's `forward_speed()` read where the command is applied, which is the server. mg-buses-from-hell and game-playground call it; mg-dangerous-delivery does the same in its client sampler with its own threshold.
+**Opt-in, called by the game where it maps keys to a command, never by the chassis.** A bot's three-point turn asks for reverse while still rolling forward and means it; a chassis that rewrote every negative throttle would change every autopilot in the family. The speed is the vehicle's `forward_speed()` read where the command is applied, which is the server. mg-buses-from-hell and game-playlot call it; mg-dangerous-delivery does the same in its client sampler with its own threshold.
 
 ## Why Godot's raycast vehicle is used rather than replaced
 
