@@ -279,7 +279,7 @@ func spawn(
 
 ## Takes over a body somebody else created, and makes it a vehicle.
 ##
-## [b]For a game whose things are already spawned by something else.[/b] game-playground
+## [b]For a game whose things are already spawned by something else.[/b] game-playlot
 ## is the case this exists for: everything in that world is a [code]DotPropInstance[/code]
 ## so that it counts against a budget, can be undone, goes when its owner leaves, and can
 ## be picked up by a physics gun — and a car a gravity gun cannot punt is not a sandbox

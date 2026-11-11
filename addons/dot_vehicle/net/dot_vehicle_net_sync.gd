@@ -18,7 +18,7 @@ extends RefCounted
 ## [b]One QUATERNION, not four INTs.[/b] It was four ten-bit integer components until
 ## 2026-09-28, and dot-net's interpolator treats any int as discrete and switches it at
 ## the midpoint, so every client drew the body snapping round at the snapshot rate while
-## its position slid (game-playground's headless_net: heading still on 26 of 31 turning
+## its position slid (game-playlot's headless_net: heading still on 26 of 31 turning
 ## ticks, `[veh-heading-1]`). dot-net's own type slerps between snapshots and costs
 ## smallest-three at [code]DotNetConfig.rotation_bits[/code] (29 bits at the default 9,
 ## against 44).

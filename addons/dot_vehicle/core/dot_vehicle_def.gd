@@ -12,7 +12,7 @@ extends Resource
 ## [b]The chassis script is named by PATH, never by [code]class_name[/code].[/b] A
 ## mounted dot-cloud pack arrives long after the project's script cache was built, so a
 ## global class inside one resolves to nothing. This is the same rule dot-npc's brains
-## and game-playground's entities already follow.
+## and game-playlot's entities already follow.
 
 ## How a chassis behaves, when a game has not brought its own script.
 ##

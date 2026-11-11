@@ -435,7 +435,7 @@ func _test_spawning() -> void:
 
 ## A body created by somebody else, made a vehicle.
 ##
-## The case that put this method here is game-playground, where every spawnable is a
+## The case that put this method here is game-playlot, where every spawnable is a
 ## `DotPropInstance` so that a gravity gun can punt it — so the body exists, in the
 ## world, before anything knows it is a car.
 func _test_adopting() -> void:
